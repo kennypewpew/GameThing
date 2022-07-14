@@ -114,6 +114,15 @@ GLuint CompileShaderProgram() {
   return shaderProgram;
 }
 
+//class Map {
+// public:
+//  std::vector<std::vector<MapTile>> _tiles;
+//};
+
+struct MapTile {
+  uint8_t height;
+  char type;
+};
 
 void FillVertsAndInds( std::vector<glm::vec3> &vertices
                      , std::vector<GLuint> &indices
@@ -123,17 +132,52 @@ void FillVertsAndInds( std::vector<glm::vec3> &vertices
   mapFl.open(mapFile,std::ios::in);
   // TODO: check
   std::string ln;
-  while ( getline(mapFl,ln) ) {
-    std::cout << ln << "\n";
+  getline(mapFl,ln);
+  while ( ln[0] == '#' ) getline(mapFl,ln);
+  int space = ln.find(' ');
+  std::cout << ln.substr(0,space) << "\t" << ln.substr(space+1) << "\n";
+  int xdim = std::stoi(ln.substr(0,space));
+  int ydim = std::stoi(ln.substr(space));
+  std::cout << xdim << "\t" << ydim << "\n";
+
+  getline(mapFl,ln); // Separator
+  getline(mapFl,ln); // Get first line
+  while ( ln[0] != '-' ) {
+    int dash = ln.find('-');
+    std::string label = ln.substr(0,dash);
+    std::string name = ln.substr(dash+1);
+    std::cout << label << " --> " << name << "\n";
+    getline(mapFl,ln);
   }
 
-  int xdim = 7;
-  int ydim = 5;
+  std::vector<MapTile> allTiles( xdim * ydim );
+  for ( int i = 0 ; i < ydim ; ++i ) {
+    getline(mapFl,ln);
+    int prev = 0;
+    for ( int j = 0 ; j < xdim ; ++j ) {
+      int space = ln.find(' ',prev);
+      std::string entry = ln.substr(prev == 0 ? prev : prev+1,space);
+      //std::cout << entry << "\t" << entry.size() << "\n";
+      allTiles[i*xdim + j].height = stoi(entry.substr(0,entry.size()-1));
+      allTiles[i*xdim + j].type = entry.back();
+      //std::cout << (int)allTiles[i*xdim+j].height << " " << allTiles[i*xdim+j].type << "\n";
+      prev = space;
+    }
+    //std::cout << "\n";
+  }
+
+  //while ( getline(mapFl,ln) ) {
+  //  std::cout << ln << "\n";
+  //}
+
+  //int xdim = 7;
+  //int ydim = 5;
   for ( int x = 0 ; x <= xdim ; ++x ) {
     for ( int y = 0 ; y <= ydim ; ++y ) {
       float xx = 1.5*float(x)/float(xdim)-.75;
       float yy = 1.5*float(y)/float(ydim)-.75;
-      float zz = int(float(x)/5.);
+      float zz = allTiles[y*xdim + x].height;
+      //float zz = int(float(x)/5.);
       vertices.push_back(glm::vec3(xx,yy,zz));
     }
   }
