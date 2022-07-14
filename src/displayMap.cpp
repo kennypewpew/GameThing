@@ -14,7 +14,7 @@
 #include <vector>
 
 const char* vertexSource = R"glsl(
-    #version 460 core
+    #version 150 core
 
     in vec3 position;
     uniform mat4 view;
@@ -26,7 +26,7 @@ const char* vertexSource = R"glsl(
 )glsl";
 
 const char* fragmentSource = R"glsl(
-    #version 460 core
+    #version 150 core
     
     out vec4 outColor;
     
@@ -54,25 +54,33 @@ void CheckUniforms( GLuint shaderProgram ) {
 }
 
 GLFWwindow* InitializeLotsOfThings() {
-  glfwInit();
-  glfwWindowHint( GLFW_CONTEXT_VERSION_MAJOR, 4 );
-  glfwWindowHint( GLFW_CONTEXT_VERSION_MINOR, 6 );
-  glfwWindowHint( GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE );
+  int er = glfwInit();
+  if ( GLFW_FALSE == er ) {
+    std::cout << "Error initializing GLFW\n";
+  }
+  glfwWindowHint( GLFW_CONTEXT_VERSION_MAJOR, 3 );
+  glfwWindowHint( GLFW_CONTEXT_VERSION_MINOR, 1 );
+  glfwWindowHint( GLFW_OPENGL_PROFILE, GLFW_OPENGL_ANY_PROFILE );
   glfwWindowHint( GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE );
 
   glfwWindowHint(GLFW_RESIZABLE, GL_FALSE);
 
   GLFWwindow* window = glfwCreateWindow(800, 600, "testing", nullptr, nullptr); // Windowed
+  if ( NULL == window ) {
+    std::cout << "Failed to create window\n";
+  }
   //GLFWwindow* window = glfwCreateWindow(800, 600, "OpenGL", glfwGetPrimaryMonitor(), nullptr); // Fullscreen
 
   // Grab active attention
   glfwMakeContextCurrent(window);
+  
   glfwSwapInterval(1);
 
   // Have to init glew AFTER grabbing attention
   glewExperimental = GL_TRUE;
-  if ( ! GLEW_OK == glewInit() ) {
-    std::cout << "Problem initializing GLEW\n";
+  GLenum err = glewInit();
+  if ( err ) {
+    std::cout << "Problem initializing GLEW: " << glewGetErrorString(err) << "\n";
     exit(1);
   }
 
