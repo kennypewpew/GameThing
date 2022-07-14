@@ -11,6 +11,8 @@
 
 #include <thread>
 #include <iostream>
+#include <fstream>
+#include <string>
 #include <vector>
 
 const char* vertexSource = R"glsl(
@@ -117,6 +119,14 @@ void FillVertsAndInds( std::vector<glm::vec3> &vertices
                      , std::vector<GLuint> &indices
                      , const std::string &mapFile
                      ) {
+  std::fstream mapFl;
+  mapFl.open(mapFile,std::ios::in);
+  // TODO: check
+  std::string ln;
+  while ( getline(mapFl,ln) ) {
+    std::cout << ln << "\n";
+  }
+
   int xdim = 7;
   int ydim = 5;
   for ( int x = 0 ; x <= xdim ; ++x ) {
