@@ -15,10 +15,17 @@
 #include <vector>
 #include <iostream>
 #include <fstream>
+#include <sstream>
+
+#include "Maps.h"
+#include "Window.h"
 
 
 const unsigned int DISP_WIDTH = 640;
 const unsigned int DISP_HEIGHT = 480;
+
+const unsigned int TARGET_FPS = 30;
+const unsigned int TARGET_FRAME_TIME = 1000 / TARGET_FPS;
 
 const char* vertexSource = R"glsl(
     #version 150 core
@@ -38,6 +45,15 @@ const char* fragmentSource = R"glsl(
     void main()
     {
         gl_FragColor = vec4(1.0, 0.0, 1.0, 1.0);
+    }
+)glsl";
+
+const char* fragmentSourceWhite = R"glsl(
+    #version 150 core
+    
+    void main()
+    {
+        gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0);
     }
 )glsl";
 
@@ -67,189 +83,339 @@ GLuint CompileShaderProgram() {
   return shaderProgram;
 }
 
-struct MapTile {
-  uint8_t height;
-  char type;
-};
+GLuint CompileShaderProgramWhite() {
+  // Compile shaders
+  GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);
+  glShaderSource(vertexShader,1,&vertexSource,NULL);
+  glCompileShader(vertexShader);
 
-class Map {
- public:
-  std::vector<MapTile> _tiles;
-  int _xdim;
-  int _ydim;
-  Map(const int &x, const int &y) {
-    _tiles.resize(x*y);
-  _xdim = x;
-  _ydim = y;
-  }
-};
+  GLuint fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
+  glShaderSource(fragmentShader,1,&fragmentSourceWhite,NULL);
+  glCompileShader(fragmentShader);
 
-Map ReadMapFile( const std::string &mapFile ) {
-  std::fstream mapFl;
-  mapFl.open(mapFile,std::ios::in);
-  // TODO: check
-  std::string ln;
-  getline(mapFl,ln);
-  while ( ln[0] == '#' ) getline(mapFl,ln);
-  int space = ln.find(' ');
-  std::cout << ln.substr(0,space) << "\t" << ln.substr(space+1) << "\n";
-  int xdim = std::stoi(ln.substr(0,space));
-  int ydim = std::stoi(ln.substr(space));
-  Map res(xdim,ydim);
-  std::cout << xdim << "\t" << ydim << "\n";
+  GLuint shaderProgram = glCreateProgram();
+  glAttachShader(shaderProgram, vertexShader);
+  glAttachShader(shaderProgram, fragmentShader);
 
-  getline(mapFl,ln); // Separator
-  getline(mapFl,ln); // Get first line
-  while ( ln[0] != '-' ) {
-    int dash = ln.find('-');
-    std::string label = ln.substr(0,dash);
-    std::string name = ln.substr(dash+1);
-    std::cout << label << " --> " << name << "\n";
-    getline(mapFl,ln);
-  }
+  //glBindFragDataLocation(shaderProgram,0,"outColor");
+  glLinkProgram(shaderProgram);
+  glUseProgram(shaderProgram);
 
-  //std::vector<MapTile> allTiles( xdim * ydim );
-  for ( int i = 0 ; i < ydim ; ++i ) {
-    getline(mapFl,ln);
-    int prev = 0;
-    for ( int j = 0 ; j < xdim ; ++j ) {
-      int space = ln.find(' ',prev);
-      std::string entry = ln.substr(prev == 0 ? prev : prev+1,space);
-      //std::cout << entry << "\t" << entry.size() << "\n";
-      res._tiles[i*xdim + j].height = stoi(entry.substr(0,entry.size()-1));
-      res._tiles[i*xdim + j].type = entry.back();
-      //std::cout << (int)res._tiles[i*xdim+j].height << " " << res._tiles[i*xdim+j].type << "\n";
-      prev = space;
-    }
-    //std::cout << "\n";
-  }
-  return res;
+  GLint posAttrib = glGetAttribLocation(shaderProgram,"position");
+  glEnableVertexAttribArray(posAttrib);
+  glVertexAttribPointer(posAttrib, 3, GL_FLOAT, GL_FALSE, 0, 0);
+
+  return shaderProgram;
 }
+
+class Rotation {
+ public:
+  float degrees;
+  glm::vec3 vector;
+  Rotation(const float &d, const glm::vec3 &v) : degrees(d) , vector(v) {}
+  Rotation() {}
+};
+
+class Translation {
+ public:
+  float distance;
+  glm::vec3 vector;
+  Translation(const float &d, const glm::vec3 &v) : distance(d) , vector(v) {}
+};
 
 void FillVertsAndInds( std::vector<glm::vec3> &vertices
                      , std::vector<GLuint> &indices
-                     , const std::string &mapFile
+                     , const Map &mp
                      ) {
-  Map mp = ReadMapFile(mapFile);
-  //while ( getline(mapFl,ln) ) {
-  //  std::cout << ln << "\n";
-  //}
-
   int xdim = mp._xdim;
   int ydim = mp._ydim;
-  for ( int x = 0 ; x <= xdim ; ++x ) {
-    for ( int y = 0 ; y <= ydim ; ++y ) {
-      float xx = 1.5*float(x)/float(xdim)-.75;
-      float yy = 1.5*float(y)/float(ydim)-.75;
-      float zz = mp._tiles[y*xdim + x].height;
-      //float zz = int(float(x)/5.);
-      vertices.push_back(glm::vec3(xx,yy,zz));
-    }
-  }
+  int cnt = 0;
   for ( int x = 0 ; x < xdim ; ++x ) {
     for ( int y = 0 ; y < ydim ; ++y ) {
-      indices.push_back((x+0)*(ydim+1) + y+0);
-      indices.push_back((x+0)*(ydim+1) + y+1);
-      indices.push_back((x+0)*(ydim+1) + y+0);
-      indices.push_back((x+1)*(ydim+1) + y+0);
+      float xx1 = 1.5*float(x)/float(xdim)-.75;
+      float yy1 = 1.5*float(y)/float(ydim)-.75;
+      float xx2 = 1.5*float(x+1)/float(xdim)-.75;
+      float yy2 = 1.5*float(y+1)/float(ydim)-.75;
+      float zz = (mp._tiles[y*xdim + x].height)/100.;
+      vertices.push_back(glm::vec3(xx1,yy1,zz));
+      vertices.push_back(glm::vec3(xx1,yy2,zz));
+      vertices.push_back(glm::vec3(xx2,yy2,zz));
+      vertices.push_back(glm::vec3(xx2,yy1,zz));
+      indices.push_back(cnt+0);indices.push_back(cnt+1);
+      indices.push_back(cnt+1);indices.push_back(cnt+2);
+      indices.push_back(cnt+2);indices.push_back(cnt+3);
+      indices.push_back(cnt+3);indices.push_back(cnt+0);
+      cnt += 4;
     }
-    indices.push_back((x+0)*(ydim+1) + ydim);
-    indices.push_back((x+1)*(ydim+1) + ydim);
-  }
-  for ( int y = vertices.size()-(ydim+1) ; y < vertices.size()-1 ; ++y ) {
-    indices.push_back(y);
-    indices.push_back(y+1);
   }
 }
 
-void RotateView( const std::string &uniformName
-               , const float &degrees
-               , const glm::vec3 &rotationVector
-               , const GLuint &program
-               ) {
-    glm::mat4 view = glm::mat4(1.0f);
-    view = glm::rotate(view,glm::radians(degrees), rotationVector);
-    GLint uniTrans = glGetUniformLocation(program, uniformName.c_str());
-    glUniformMatrix4fv(uniTrans, 1, GL_FALSE, glm::value_ptr(view));
-}
+class GlLayer {
+ public:
+  GLuint va; // Vertex array
+  GLuint vb; // Vertex buffer
+  GLuint ib; // Vertex array
+  GLuint sp; // Shader program
+
+  GLenum drawType; // Type of drawing (GL_POINTS, GL_LINE, etc.)
+
+  GlLayer() {
+    glGenVertexArrays(1,&this->va);
+    glBindVertexArray(this->va);
+
+    glGenBuffers(1, &this->vb);
+    glBindBuffer(GL_ARRAY_BUFFER, this->vb);
+
+    glGenBuffers(1, &this->ib);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,this->ib);
+
+    this->sp = GL_INVALID_VALUE;
+  }
+
+  void BindVB( std::vector<glm::vec3> &v , GLenum usage = GL_STATIC_DRAW ) {
+    glBufferData(GL_ARRAY_BUFFER, v.size()*sizeof(glm::vec3), glm::value_ptr(v[0]), usage);
+  }
+
+  void BindIB( std::vector<GLuint> &i , GLenum usage = GL_STATIC_DRAW ) {
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint)*i.size(), i.data(), usage);
+  }
+
+  void CompileShaderProgram( const char *vShader
+                           , const char *fShader
+                           , const std::vector<std::string> inputs
+                           ) {
+    this->sp = glCreateProgram();
+
+    // Compile shaders
+    if ( vShader != NULL ) {
+      GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);
+      glShaderSource(vertexShader,1,&vShader,NULL);
+      glCompileShader(vertexShader);
+      glAttachShader(this->sp, vertexShader);
+    }
+
+    if ( fShader != NULL ) {
+      GLuint fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
+      glShaderSource(fragmentShader,1,&fShader,NULL);
+      glCompileShader(fragmentShader);
+      glAttachShader(this->sp, fragmentShader);
+    }
+
+    glLinkProgram(this->sp);
+    glUseProgram(this->sp);
+
+    for ( auto s : inputs ) {
+      GLint posAttrib = glGetAttribLocation(this->sp,s.c_str());
+      glEnableVertexAttribArray(posAttrib);
+      glVertexAttribPointer(posAttrib, 3, GL_FLOAT, GL_FALSE, 0, 0);
+    }
+  }
+
+  void RotateView( const std::string &uniformName
+                 , const std::vector<Rotation> &rotations
+                 , const std::vector<Translation> &translations
+                 ) {
+      glm::mat4 view = glm::mat4(1.0f);
+      for ( int i = 0 ; i < rotations.size() ; ++i ) {
+        view = glm::rotate(view,glm::radians(rotations[i].degrees), rotations[i].vector);
+      }
+      GLint uniTrans = glGetUniformLocation(this->sp, uniformName.c_str());
+      glUniformMatrix4fv(uniTrans, 1, GL_FALSE, glm::value_ptr(view));
+  }
+
+  void UseThisLayer() {
+    glBindVertexArray(this->va);
+    glUseProgram(this->sp);
+  }
+
+
+};
 
 int SDL_main(int argc, char **argv) {
-  // The window
-  SDL_Window *window = NULL;
-  // The OpenGL context
-  SDL_GLContext context = NULL;
-  // Init SDL
-  if (SDL_Init(SDL_INIT_VIDEO) < 0) {
-    SDL_Log("SDL could not initialize! SDL_Error: %s\n", SDL_GetError());
-    return EXIT_FAILURE;
-  }
-  // Setup the exit hook
-  atexit(SDL_Quit);
-
-  // Request OpenGL ES 3.0
-  SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
-  SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
-  SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
-
-  // Want double-buffering
-  SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-
-  // Create the window
-  window = SDL_CreateWindow("GLES3+SDL2 Tutorial", SDL_WINDOWPOS_UNDEFINED,
-      SDL_WINDOWPOS_UNDEFINED, DISP_WIDTH, DISP_HEIGHT,
-      SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN);
-  if (!window) {
-    SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Error",
-        "Couldn't create the main window.", NULL);
-    return EXIT_FAILURE;
-  }
-
-  context = SDL_GL_CreateContext(window);
-  if (!context) {
-    SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Error",
-        "Couldn't create an OpenGL context.", NULL);
-    return EXIT_FAILURE;
-  }
+  InitializeSDL("GLES3+SDL2 Tutorial",DISP_WIDTH,DISP_HEIGHT);
 
   std::vector<glm::vec3> vertices;
   std::vector<GLuint> indices;
-  FillVertsAndInds( vertices, indices , "session/default/maps/example.map" );
+  Map myMap = ReadMapFile("session/default/maps/example.map");
+  FillVertsAndInds( vertices, indices , myMap );
 
-  // Vertex array needs to exist for things to appear
-  GLuint vao;
-  glGenVertexArrays(1,&vao);
-  glBindVertexArray(vao);
+  GlLayer mapLayer;
+  mapLayer.BindVB(vertices);
+  mapLayer.BindIB(indices);
+  mapLayer.CompileShaderProgram( vertexSource
+                                 , fragmentSource
+                                 , std::vector<std::string>(1,"position")
+                                 );
 
-  // Vertices
-  GLuint vbo;
-  glGenBuffers(1, &vbo);
-  glBindBuffer(GL_ARRAY_BUFFER, vbo);
-  glBufferData(GL_ARRAY_BUFFER, vertices.size()*sizeof(glm::vec3), glm::value_ptr(vertices[0]), GL_STATIC_DRAW);
+enum RotationAxes {
+    ROTATE_X
+  , ROTATE_Y
+  , ROTATE_Z
+  , ROTATE_TOTAL
+};
 
-  // Indices
-  GLuint ebo;
-  glGenBuffers(1, &ebo);
-  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,ebo);
-  glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint)*indices.size(), indices.data(),GL_STATIC_DRAW);
-
-  GLuint shaderProgram = CompileShaderProgram();
-
-  RotateView( "view" , 25.f , glm::vec3(0.0,0.2,0.8) , shaderProgram);
+  std::vector<Rotation> rots(ROTATE_TOTAL);
+  std::vector<Translation> trans;
+  rots[ROTATE_X] = Rotation(-65.f,glm::vec3(1.f,0.f,0.f));
+  rots[ROTATE_Y] = Rotation(  0.f,glm::vec3(0.f,1.f,0.f));
+  rots[ROTATE_Z] = Rotation( 45.f,glm::vec3(0.f,0.f,1.f));
+  mapLayer.RotateView( "view" , rots , trans);
   glDrawElements(GL_LINES,indices.size()*sizeof(glm::vec2),GL_UNSIGNED_INT,NULL);
 
   // Update the window
-  SDL_GL_SwapWindow(window);
+  SwapWindows();
+
+  int pos[2] = {3,3};
+  std::vector<glm::vec3> posVerts(3);
+  posVerts[0] = glm::vec3(pos[0],pos[1],0);
+  posVerts[1] = glm::vec3(pos[0]+1,pos[1],0);
+  posVerts[2] = glm::vec3(pos[0],pos[1]+1,0);
+
+  GlLayer actorLayer;
+  actorLayer.BindVB(posVerts);
+  actorLayer.CompileShaderProgram( vertexSource
+                                 , fragmentSourceWhite
+                                 , std::vector<std::string>(1,"position")
+                                 );
 
   // Wait for the user to quit
   bool quit = false;
+  bool leftButtonDown = false;
+  int xLast, yLast;
   while (!quit) {
+    uint32_t frameStart = SDL_GetTicks();
     SDL_Event event;
-    if (SDL_WaitEvent(&event) != 0) {
+    if (SDL_PollEvent(&event) != 0) {
       if (event.type == SDL_QUIT) {
         // User wants to quit
         quit = true;
       }
+      else if ( event.type == SDL_KEYDOWN ) {
+        switch (event.key.keysym.sym)
+        {
+          case SDLK_a:
+            rots[ROTATE_Z].degrees -= 15.;
+            break;
+          case SDLK_d:
+            rots[ROTATE_Z].degrees += 15.;
+            break;
+          case SDLK_s:
+            rots[ROTATE_X].degrees -= 5.;
+            break;
+          case SDLK_w:
+            rots[ROTATE_X].degrees += 5.;
+            break;
+          case SDLK_UP:
+            pos[0] += 1;
+            break;
+          case SDLK_DOWN:
+            pos[0] -= 1;
+            break;
+          case SDLK_LEFT:
+            pos[1] += 1;
+            break;
+          case SDLK_RIGHT:
+            pos[1] -= 1;
+            break;
+          case SDLK_q:
+            quit = true;
+            break;
+          default:
+            break;
+        }
+      }
+      else if ( uint8_t(event.type) == uint8_t(SDL_MOUSEBUTTONDOWN) ) {
+        switch(event.button.button)
+        {
+          case SDL_BUTTON_LEFT:
+            std::cout << "left click\n";
+            SDL_GetMouseState(&xLast,&yLast);
+            leftButtonDown = true;
+            break;
+          case SDL_BUTTON_RIGHT:
+            std::cout << "right click\n";
+            break;
+          case SDL_BUTTON_MIDDLE:
+            std::cout << "mid click\n";
+            break;
+          case SDL_BUTTON_X1:
+            std::cout << "x1 click\n";
+            break;
+          case SDL_BUTTON_X2:
+            std::cout << "x2 click\n";
+            break;
+          default:
+            break;
+        }
+      }
+      else if ( event.type == SDL_MOUSEBUTTONUP ) {
+        switch(event.button.button)
+        {
+          case SDL_BUTTON_LEFT:
+            std::cout << "left up\n";
+            SDL_GetMouseState(&xLast,&yLast);
+            leftButtonDown = false;
+            break;
+          case SDL_BUTTON_RIGHT:
+            std::cout << "right click\n";
+            break;
+          case SDL_BUTTON_MIDDLE:
+            std::cout << "mid click\n";
+            break;
+          case SDL_BUTTON_X1:
+            std::cout << "x1 click\n";
+            break;
+          case SDL_BUTTON_X2:
+            std::cout << "x2 click\n";
+            break;
+          default:
+            break;
+        }
+      }
     }
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    if ( leftButtonDown ) {
+      int xNow, yNow;
+      uint32_t buttons = SDL_GetMouseState(&xNow,&yNow);
+      rots[ROTATE_Z].degrees += float(xNow - xLast)/100.;
+      rots[ROTATE_X].degrees += float(yNow - yLast)/100.;
+      if ( buttons & SDL_BUTTON_LMASK == 0 ) {
+        leftButtonDown = false;
+      }
+    }
+
+    mapLayer.UseThisLayer();
+    glDrawElements(GL_LINES,indices.size()*sizeof(glm::vec2),GL_UNSIGNED_INT,NULL);
+    mapLayer.RotateView( "view" , rots , trans);
+
+    float x1 = 1.5*float(pos[0]  )/float(myMap._xdim)-.75;
+    float x2 = 1.5*float(pos[0]+1)/float(myMap._xdim)-.75;
+    float y1 = 1.5*float(pos[1]  )/float(myMap._ydim)-.75;
+    float y2 = 1.5*float(pos[1]+1)/float(myMap._ydim)-.75;
+    posVerts[0] = glm::vec3(x1,y1,myMap.h(pos[0],pos[1])/100.);
+    posVerts[1] = glm::vec3(x2,y1,myMap.h(pos[0],pos[1])/100.);
+    posVerts[2] = glm::vec3(x1,y2,(myMap.h(pos[0],pos[1])+10)/100.);
+    glBufferData(GL_ARRAY_BUFFER, posVerts.size()*sizeof(glm::vec3),glm::value_ptr(posVerts[0]), GL_STATIC_DRAW);
+
+    actorLayer.UseThisLayer();
+    glDrawArrays(GL_TRIANGLES,0,3);
+    actorLayer.RotateView( "view" , rots , trans );
+
+    SwapWindows();
+
+    //uint32_t frameEnd = SDL_GetTicks();
+    //uint32_t framesUsed = frameEnd - frameStart;
+    //printf("%d ms\n", framesUsed);
+
+    //int cnt = 0;
+    //if ( framesUsed < TARGET_FRAME_TIME ) {
+    //  //printf(".");
+    //  SDL_Delay(TARGET_FRAME_TIME - framesUsed);
+    //}
+    //if ( cnt > 20 ) printf("\n");
+    //cnt = 0;
   }
   return EXIT_SUCCESS;
 }

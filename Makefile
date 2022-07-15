@@ -8,6 +8,8 @@ IFLAGS= -I ./include
 CFLAGS= -O2 -g
 LFLAGS= $(GLFW_LINK_FLAGS) $(GLEW_LINK_FLAGS)
 
+SRC=src/Maps.cpp src/Window.cpp
+
 all: run_sdlMain
 
 run_displayMap: bin/displayMap
@@ -18,5 +20,5 @@ run_sdlMain: bin/sdlMain
 
 run_%: bin/%
 
-bin/%: src/%.cpp
+bin/%: src/%.cpp $(SRC)
 	$(CC) $^ -o $@ $(CFLAGS) $(IFLAGS) $(LFLAGS)
