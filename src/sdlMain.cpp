@@ -67,20 +67,24 @@ GLuint CompileShaderProgram() {
   return shaderProgram;
 }
 
-//class Map {
-// public:
-//  std::vector<std::vector<MapTile>> _tiles;
-//};
-
 struct MapTile {
   uint8_t height;
   char type;
 };
 
-void FillVertsAndInds( std::vector<glm::vec3> &vertices
-                     , std::vector<GLuint> &indices
-                     , const std::string &mapFile
-                     ) {
+class Map {
+ public:
+  std::vector<MapTile> _tiles;
+  int _xdim;
+  int _ydim;
+  Map(const int &x, const int &y) {
+    _tiles.resize(x*y);
+  _xdim = x;
+  _ydim = y;
+  }
+};
+
+Map ReadMapFile( const std::string &mapFile ) {
   std::fstream mapFl;
   mapFl.open(mapFile,std::ios::in);
   // TODO: check
@@ -91,6 +95,7 @@ void FillVertsAndInds( std::vector<glm::vec3> &vertices
   std::cout << ln.substr(0,space) << "\t" << ln.substr(space+1) << "\n";
   int xdim = std::stoi(ln.substr(0,space));
   int ydim = std::stoi(ln.substr(space));
+  Map res(xdim,ydim);
   std::cout << xdim << "\t" << ydim << "\n";
 
   getline(mapFl,ln); // Separator
@@ -103,7 +108,7 @@ void FillVertsAndInds( std::vector<glm::vec3> &vertices
     getline(mapFl,ln);
   }
 
-  std::vector<MapTile> allTiles( xdim * ydim );
+  //std::vector<MapTile> allTiles( xdim * ydim );
   for ( int i = 0 ; i < ydim ; ++i ) {
     getline(mapFl,ln);
     int prev = 0;
@@ -111,25 +116,32 @@ void FillVertsAndInds( std::vector<glm::vec3> &vertices
       int space = ln.find(' ',prev);
       std::string entry = ln.substr(prev == 0 ? prev : prev+1,space);
       //std::cout << entry << "\t" << entry.size() << "\n";
-      allTiles[i*xdim + j].height = stoi(entry.substr(0,entry.size()-1));
-      allTiles[i*xdim + j].type = entry.back();
-      //std::cout << (int)allTiles[i*xdim+j].height << " " << allTiles[i*xdim+j].type << "\n";
+      res._tiles[i*xdim + j].height = stoi(entry.substr(0,entry.size()-1));
+      res._tiles[i*xdim + j].type = entry.back();
+      //std::cout << (int)res._tiles[i*xdim+j].height << " " << res._tiles[i*xdim+j].type << "\n";
       prev = space;
     }
     //std::cout << "\n";
   }
+  return res;
+}
 
+void FillVertsAndInds( std::vector<glm::vec3> &vertices
+                     , std::vector<GLuint> &indices
+                     , const std::string &mapFile
+                     ) {
+  Map mp = ReadMapFile(mapFile);
   //while ( getline(mapFl,ln) ) {
   //  std::cout << ln << "\n";
   //}
 
-  //int xdim = 7;
-  //int ydim = 5;
+  int xdim = mp._xdim;
+  int ydim = mp._ydim;
   for ( int x = 0 ; x <= xdim ; ++x ) {
     for ( int y = 0 ; y <= ydim ; ++y ) {
       float xx = 1.5*float(x)/float(xdim)-.75;
       float yy = 1.5*float(y)/float(ydim)-.75;
-      float zz = allTiles[y*xdim + x].height;
+      float zz = mp._tiles[y*xdim + x].height;
       //float zz = int(float(x)/5.);
       vertices.push_back(glm::vec3(xx,yy,zz));
     }
