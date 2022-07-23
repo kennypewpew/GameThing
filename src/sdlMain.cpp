@@ -286,7 +286,8 @@ int SDL_main(int argc, char **argv) {
 
   std::vector<glm::vec3> verticesL, verticesT;
   std::vector<GLuint> indicesL, indicesT;
-  Map myMap = ReadMapFile("session/default/maps/example.map");
+  //Map myMap = ReadMapFile("session/default/maps/example.map");
+  Map myMap = GenerateMap(7,7,std::vector<VerticalityFeatures>(1,HILL));
   FillVertsAndIndsLines(     verticesL, indicesL , myMap );
   FillVertsAndIndsTriangles( verticesT, indicesT , myMap );
 
