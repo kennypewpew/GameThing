@@ -1,6 +1,6 @@
 // Basic OpenGL ES 3 + SDL2 template code
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_opengles2.h>
+#include <SDL.h>
+#include <SDL_opengles2.h>
 #include <GLES3/gl3.h>
 #include <cstdio>
 #include <cstdlib>
@@ -18,19 +18,27 @@
 #include <sstream>
 
 #include "Maps.h"
+#include "MapGen.h"
 #include "Window.h"
 
+#include <EGL/egl.h>
 
-const unsigned int DISP_WIDTH = 640;
-const unsigned int DISP_HEIGHT = 480;
+PFNGLGENVERTEXARRAYSOESPROC glGenVertexArraysOES;
+PFNGLBINDVERTEXARRAYOESPROC glBindVertexArrayOES;
+PFNGLDELETEVERTEXARRAYSOESPROC glDeleteVertexArraysOES;
+PFNGLISVERTEXARRAYOESPROC glIsVertexArrayOES;
+
+const unsigned int DISP_WIDTH = 480;
+const unsigned int DISP_HEIGHT = 960;
 
 const unsigned int TARGET_FPS = 30;
 const unsigned int TARGET_FRAME_TIME = 1000 / TARGET_FPS;
 
 const char* vertexSource = R"glsl(
-    #version 150 core
+    #version 300 es
 
-    in vec3 position;
+    precision mediump float;
+    in mediump vec3 position;
     uniform mat4 view;
 
     void main()
@@ -40,72 +48,37 @@ const char* vertexSource = R"glsl(
 )glsl";
 
 const char* fragmentSource = R"glsl(
-    #version 150 core
+    #version 300 es
+
+    precision mediump float;
+    out mediump vec4 fragColor;
     
     void main()
     {
-        gl_FragColor = vec4(1.0, 0.0, 1.0, 1.0);
+        fragColor = vec4(1.0, 0.0, 1.0, 1.0);
     }
 )glsl";
 
 const char* fragmentSourceWhite = R"glsl(
-    #version 150 core
+    #version 300 es
+    
+    precision mediump float;
+    out mediump vec4 fragColor;
     
     void main()
     {
-        gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0);
+        fragColor = vec4(1.0, 1.0, 1.0, 1.0);
     }
 )glsl";
 
-
-GLuint CompileShaderProgram() {
-  // Compile shaders
-  GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);
-  glShaderSource(vertexShader,1,&vertexSource,NULL);
-  glCompileShader(vertexShader);
-
-  GLuint fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
-  glShaderSource(fragmentShader,1,&fragmentSource,NULL);
-  glCompileShader(fragmentShader);
-
-  GLuint shaderProgram = glCreateProgram();
-  glAttachShader(shaderProgram, vertexShader);
-  glAttachShader(shaderProgram, fragmentShader);
-
-  //glBindFragDataLocation(shaderProgram,0,"outColor");
-  glLinkProgram(shaderProgram);
-  glUseProgram(shaderProgram);
-
-  GLint posAttrib = glGetAttribLocation(shaderProgram,"position");
-  glEnableVertexAttribArray(posAttrib);
-  glVertexAttribPointer(posAttrib, 3, GL_FLOAT, GL_FALSE, 0, 0);
-
-  return shaderProgram;
-}
-
-GLuint CompileShaderProgramWhite() {
-  // Compile shaders
-  GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);
-  glShaderSource(vertexShader,1,&vertexSource,NULL);
-  glCompileShader(vertexShader);
-
-  GLuint fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
-  glShaderSource(fragmentShader,1,&fragmentSourceWhite,NULL);
-  glCompileShader(fragmentShader);
-
-  GLuint shaderProgram = glCreateProgram();
-  glAttachShader(shaderProgram, vertexShader);
-  glAttachShader(shaderProgram, fragmentShader);
-
-  //glBindFragDataLocation(shaderProgram,0,"outColor");
-  glLinkProgram(shaderProgram);
-  glUseProgram(shaderProgram);
-
-  GLint posAttrib = glGetAttribLocation(shaderProgram,"position");
-  glEnableVertexAttribArray(posAttrib);
-  glVertexAttribPointer(posAttrib, 3, GL_FLOAT, GL_FALSE, 0, 0);
-
-  return shaderProgram;
+void shaderCompileCheck(GLint s) {
+  GLint status;
+  glGetShaderiv(s, GL_COMPILE_STATUS, &status);
+  if ( status != GL_TRUE ) {
+    char buffer[512];
+    glGetShaderInfoLog(s, 512, NULL, buffer);
+    printf("%s\n",buffer);
+  }
 }
 
 class Rotation {
@@ -123,7 +96,36 @@ class Translation {
   Translation(const float &d, const glm::vec3 &v) : distance(d) , vector(v) {}
 };
 
-void FillVertsAndInds( std::vector<glm::vec3> &vertices
+void FillVertsAndIndsTriangles( std::vector<glm::vec3> &vertices
+                     , std::vector<GLuint> &indices
+                     , const Map &mp
+                     ) {
+  int xdim = mp._xdim;
+  int ydim = mp._ydim;
+  int cnt = 0;
+  for ( int x = 0 ; x < xdim ; ++x ) {
+    for ( int y = 0 ; y < ydim ; ++y ) {
+      float xx1 = 1.5*float(x)/float(xdim)-.75;
+      float yy1 = 1.5*float(y)/float(ydim)-.75;
+      float xx2 = 1.5*float(x+1)/float(xdim)-.75;
+      float yy2 = 1.5*float(y+1)/float(ydim)-.75;
+      float zz = (mp._tiles[y*xdim + x].height)/100.;
+      vertices.push_back(glm::vec3(xx1,yy1,zz));
+      vertices.push_back(glm::vec3(xx1,yy2,zz));
+      vertices.push_back(glm::vec3(xx2,yy2,zz));
+      vertices.push_back(glm::vec3(xx2,yy1,zz));
+      indices.push_back(cnt+0);
+      indices.push_back(cnt+1);
+      indices.push_back(cnt+2);
+      indices.push_back(cnt+3);
+      indices.push_back(cnt+0);
+      indices.push_back(cnt+2);
+      cnt += 4;
+    }
+  }
+}
+
+void FillVertsAndIndsLines( std::vector<glm::vec3> &vertices
                      , std::vector<GLuint> &indices
                      , const Map &mp
                      ) {
@@ -160,8 +162,8 @@ class GlLayer {
   GLenum drawType; // Type of drawing (GL_POINTS, GL_LINE, etc.)
 
   GlLayer() {
-    glGenVertexArrays(1,&this->va);
-    glBindVertexArray(this->va);
+    glGenVertexArraysOES(1,&this->va);
+    glBindVertexArrayOES(this->va);
 
     glGenBuffers(1, &this->vb);
     glBindBuffer(GL_ARRAY_BUFFER, this->vb);
@@ -191,6 +193,7 @@ class GlLayer {
       GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);
       glShaderSource(vertexShader,1,&vShader,NULL);
       glCompileShader(vertexShader);
+      shaderCompileCheck(vertexShader);
       glAttachShader(this->sp, vertexShader);
     }
 
@@ -198,6 +201,7 @@ class GlLayer {
       GLuint fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
       glShaderSource(fragmentShader,1,&fShader,NULL);
       glCompileShader(fragmentShader);
+      shaderCompileCheck(fragmentShader);
       glAttachShader(this->sp, fragmentShader);
     }
 
@@ -224,28 +228,12 @@ class GlLayer {
   }
 
   void UseThisLayer() {
-    glBindVertexArray(this->va);
+    glBindVertexArrayOES(this->va);
     glUseProgram(this->sp);
   }
 
 
 };
-
-int SDL_main(int argc, char **argv) {
-  InitializeSDL("GLES3+SDL2 Tutorial",DISP_WIDTH,DISP_HEIGHT);
-
-  std::vector<glm::vec3> vertices;
-  std::vector<GLuint> indices;
-  Map myMap = ReadMapFile("session/default/maps/example.map");
-  FillVertsAndInds( vertices, indices , myMap );
-
-  GlLayer mapLayer;
-  mapLayer.BindVB(vertices);
-  mapLayer.BindIB(indices);
-  mapLayer.CompileShaderProgram( vertexSource
-                                 , fragmentSource
-                                 , std::vector<std::string>(1,"position")
-                                 );
 
 enum RotationAxes {
     ROTATE_X
@@ -254,16 +242,74 @@ enum RotationAxes {
   , ROTATE_TOTAL
 };
 
+void checkShaderCompile(GLuint s) {
+  GLint success = 0;
+  glGetShaderiv(s,GL_COMPILE_STATUS,&success);
+  if(success == GL_FALSE)
+  {
+  	GLint maxLength = 0;
+  	glGetShaderiv(s, GL_INFO_LOG_LENGTH, &maxLength);
+  
+  	// The maxLength includes the NULL character
+  	std::vector<GLchar> errorLog(maxLength);
+  	glGetShaderInfoLog(s, maxLength, &maxLength, &errorLog[0]);
+  
+  	// Provide the infolog in whatever manor you deem best.
+  	// Exit with failure.
+  	glDeleteShader(s); // Don't leak the shader.
+  	return;
+  }
+}
+
+
+int SDL_main(int argc, char **argv) {
+  glGenVertexArraysOES = (PFNGLGENVERTEXARRAYSOESPROC)eglGetProcAddress ( "glGenVertexArraysOES" );
+  glBindVertexArrayOES = (PFNGLBINDVERTEXARRAYOESPROC)eglGetProcAddress ( "glBindVertexArrayOES" );
+  glDeleteVertexArraysOES = (PFNGLDELETEVERTEXARRAYSOESPROC)eglGetProcAddress ( "glDeleteVertexArraysOES" );
+  glIsVertexArrayOES = (PFNGLISVERTEXARRAYOESPROC)eglGetProcAddress ( "glIsVertexArrayOES" );
+
+  InitializeSDL("GLES3+SDL2 Tutorial",DISP_WIDTH,DISP_HEIGHT);
+
+  glLineWidth(3.0f);
+  glEnable(GL_DEPTH_TEST);
+
+  // Because my depth seems to be backwards from what's expected
+  glDepthFunc(GL_GREATER);
+  glClearDepthf(0.f);
+
   std::vector<Rotation> rots(ROTATE_TOTAL);
   std::vector<Translation> trans;
   rots[ROTATE_X] = Rotation(-65.f,glm::vec3(1.f,0.f,0.f));
   rots[ROTATE_Y] = Rotation(  0.f,glm::vec3(0.f,1.f,0.f));
   rots[ROTATE_Z] = Rotation( 45.f,glm::vec3(0.f,0.f,1.f));
-  mapLayer.RotateView( "view" , rots , trans);
-  glDrawElements(GL_LINES,indices.size()*sizeof(glm::vec2),GL_UNSIGNED_INT,NULL);
 
-  // Update the window
-  SwapWindows();
+
+  std::vector<glm::vec3> verticesL, verticesT;
+  std::vector<GLuint> indicesL, indicesT;
+  Map myMap = ReadMapFile("session/default/maps/example.map");
+  FillVertsAndIndsLines(     verticesL, indicesL , myMap );
+  FillVertsAndIndsTriangles( verticesT, indicesT , myMap );
+
+  GlLayer mapLayer;
+  mapLayer.BindVB(verticesT);
+  mapLayer.BindIB(indicesT);
+  mapLayer.CompileShaderProgram( vertexSource
+                                 , fragmentSource
+                                 , std::vector<std::string>(1,"position")
+                                 );
+
+  glDrawElements(GL_TRIANGLES,indicesT.size()*sizeof(glm::vec2),GL_UNSIGNED_INT,NULL);
+  mapLayer.RotateView( "view" , rots , trans);
+
+  GlLayer gridLayer;
+  gridLayer.BindVB(verticesL);
+  gridLayer.BindIB(indicesL);
+  gridLayer.CompileShaderProgram( vertexSource
+                                 , fragmentSourceWhite
+                                 , std::vector<std::string>(1,"position")
+                                 );
+  glDrawElements(GL_LINES,indicesL.size()*sizeof(glm::vec2),GL_UNSIGNED_INT,NULL);
+  gridLayer.RotateView( "view" , rots , trans);
 
   int pos[2] = {3,3};
   std::vector<glm::vec3> posVerts(3);
@@ -277,6 +323,22 @@ enum RotationAxes {
                                  , fragmentSourceWhite
                                  , std::vector<std::string>(1,"position")
                                  );
+  glBufferData(GL_ARRAY_BUFFER, posVerts.size()*sizeof(glm::vec3),glm::value_ptr(posVerts[0]), GL_STATIC_DRAW);
+  glDrawArrays(GL_TRIANGLES,0,3);
+  actorLayer.RotateView( "view" , rots , trans);
+
+  // Update the window
+  SwapWindows();
+
+  // Textures
+  GLuint tex;
+  glGenTextures(1,&tex);
+  glBindTexture(GL_TEXTURE_2D,tex);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glGenerateMipmap(GL_TEXTURE_2D);
 
   // Wait for the user to quit
   bool quit = false;
@@ -328,7 +390,7 @@ enum RotationAxes {
         switch(event.button.button)
         {
           case SDL_BUTTON_LEFT:
-            std::cout << "left click\n";
+            //std::cout << "left click\n";
             SDL_GetMouseState(&xLast,&yLast);
             leftButtonDown = true;
             break;
@@ -352,7 +414,7 @@ enum RotationAxes {
         switch(event.button.button)
         {
           case SDL_BUTTON_LEFT:
-            std::cout << "left up\n";
+            //std::cout << "left up\n";
             SDL_GetMouseState(&xLast,&yLast);
             leftButtonDown = false;
             break;
@@ -363,10 +425,8 @@ enum RotationAxes {
             std::cout << "mid click\n";
             break;
           case SDL_BUTTON_X1:
-            std::cout << "x1 click\n";
             break;
           case SDL_BUTTON_X2:
-            std::cout << "x2 click\n";
             break;
           default:
             break;
@@ -374,7 +434,8 @@ enum RotationAxes {
       }
     }
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT);
+    //glClearDepthf(1.f);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     if ( leftButtonDown ) {
       int xNow, yNow;
@@ -387,8 +448,12 @@ enum RotationAxes {
     }
 
     mapLayer.UseThisLayer();
-    glDrawElements(GL_LINES,indices.size()*sizeof(glm::vec2),GL_UNSIGNED_INT,NULL);
+    glDrawElements(GL_TRIANGLES,indicesT.size()*sizeof(glm::vec2),GL_UNSIGNED_INT,NULL);
     mapLayer.RotateView( "view" , rots , trans);
+
+    gridLayer.UseThisLayer();
+    glDrawElements(GL_LINES,indicesL.size()*sizeof(glm::vec2),GL_UNSIGNED_INT,NULL);
+    gridLayer.RotateView( "view" , rots , trans);
 
     float x1 = 1.5*float(pos[0]  )/float(myMap._xdim)-.75;
     float x2 = 1.5*float(pos[0]+1)/float(myMap._xdim)-.75;
