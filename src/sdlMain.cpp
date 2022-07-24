@@ -96,38 +96,30 @@ class Translation {
   Translation(const float &d, const glm::vec3 &v) : distance(d) , vector(v) {}
 };
 
-void FillVertsAndIndsTriangles( std::vector<glm::vec3> &vertices
-                     , std::vector<GLuint> &indices
-                     , const Map &mp
-                     ) {
-  int xdim = mp._xdim;
-  int ydim = mp._ydim;
-  int cnt = 0;
-  for ( int x = 0 ; x < xdim ; ++x ) {
-    for ( int y = 0 ; y < ydim ; ++y ) {
-      float xx1 = 1.5*float(x)/float(xdim)-.75;
-      float yy1 = 1.5*float(y)/float(ydim)-.75;
-      float xx2 = 1.5*float(x+1)/float(xdim)-.75;
-      float yy2 = 1.5*float(y+1)/float(ydim)-.75;
-      float zz = (mp._tiles[y*xdim + x].height)/100.;
-      vertices.push_back(glm::vec3(xx1,yy1,zz));
-      vertices.push_back(glm::vec3(xx1,yy2,zz));
-      vertices.push_back(glm::vec3(xx2,yy2,zz));
-      vertices.push_back(glm::vec3(xx2,yy1,zz));
-      indices.push_back(cnt+0);
-      indices.push_back(cnt+1);
-      indices.push_back(cnt+2);
-      indices.push_back(cnt+3);
-      indices.push_back(cnt+0);
-      indices.push_back(cnt+2);
-      cnt += 4;
-    }
+void GenerateIndicesLines( std::vector<GLuint> &indices , int n ) {
+  for ( int i = 0 ; i < n ; ++i ) {
+    indices.push_back(4*i+0);indices.push_back(4*i+1);
+    indices.push_back(4*i+1);indices.push_back(4*i+2);
+    indices.push_back(4*i+2);indices.push_back(4*i+3);
+    indices.push_back(4*i+3);indices.push_back(4*i+0);
   }
 }
 
-void FillVertsAndIndsLines( std::vector<glm::vec3> &vertices
+void GenerateIndicesTriangles( std::vector<GLuint> &indices , int n ) {
+  for ( int i = 0 ; i < n ; ++i ) {
+    indices.push_back(4*i+0);
+    indices.push_back(4*i+1);
+    indices.push_back(4*i+2);
+    indices.push_back(4*i+3);
+    indices.push_back(4*i+0);
+    indices.push_back(4*i+2);
+  }
+}
+
+void FillVertsAndInds( std::vector<glm::vec3> &vertices
                      , std::vector<GLuint> &indices
                      , const Map &mp
+                     , const GLenum &type
                      ) {
   int xdim = mp._xdim;
   int ydim = mp._ydim;
@@ -138,18 +130,16 @@ void FillVertsAndIndsLines( std::vector<glm::vec3> &vertices
       float yy1 = 1.5*float(y)/float(ydim)-.75;
       float xx2 = 1.5*float(x+1)/float(xdim)-.75;
       float yy2 = 1.5*float(y+1)/float(ydim)-.75;
-      float zz = (mp._tiles[y*xdim + x].height)/100.;
+      float zz = (mp.h(x,y))/100.;
       vertices.push_back(glm::vec3(xx1,yy1,zz));
       vertices.push_back(glm::vec3(xx1,yy2,zz));
       vertices.push_back(glm::vec3(xx2,yy2,zz));
       vertices.push_back(glm::vec3(xx2,yy1,zz));
-      indices.push_back(cnt+0);indices.push_back(cnt+1);
-      indices.push_back(cnt+1);indices.push_back(cnt+2);
-      indices.push_back(cnt+2);indices.push_back(cnt+3);
-      indices.push_back(cnt+3);indices.push_back(cnt+0);
       cnt += 4;
     }
   }
+  if ( type == GL_LINES     ) GenerateIndicesLines    ( indices , xdim*ydim );
+  if ( type == GL_TRIANGLES ) GenerateIndicesTriangles( indices , xdim*ydim );
 }
 
 class GlLayer {
@@ -288,8 +278,8 @@ int SDL_main(int argc, char **argv) {
   std::vector<GLuint> indicesL, indicesT;
   //Map myMap = ReadMapFile("session/default/maps/example.map");
   Map myMap = GenerateMap(7,7,std::vector<VerticalityFeatures>(1,HILL));
-  FillVertsAndIndsLines(     verticesL, indicesL , myMap );
-  FillVertsAndIndsTriangles( verticesT, indicesT , myMap );
+  FillVertsAndInds( verticesL, indicesL , myMap , GL_LINES );
+  FillVertsAndInds( verticesT, indicesT , myMap , GL_TRIANGLES );
 
   GlLayer mapLayer;
   mapLayer.BindVB(verticesT);
