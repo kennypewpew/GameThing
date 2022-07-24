@@ -52,22 +52,11 @@ const char* fragmentSource = R"glsl(
 
     precision mediump float;
     out mediump vec4 fragColor;
+    uniform vec3 incolor;
     
     void main()
     {
-        fragColor = vec4(1.0, 0.0, 1.0, 1.0);
-    }
-)glsl";
-
-const char* fragmentSourceWhite = R"glsl(
-    #version 300 es
-    
-    precision mediump float;
-    out mediump vec4 fragColor;
-    
-    void main()
-    {
-        fragColor = vec4(1.0, 1.0, 1.0, 1.0);
+        fragColor = vec4(incolor, 1.0);
     }
 )glsl";
 
@@ -262,6 +251,7 @@ class GlLayer {
   GLuint vb; // Vertex buffer
   GLuint ib; // Vertex array
   GLuint sp; // Shader program
+  GLuint color; // Color uniform location
 
   GLenum drawType; // Type of drawing (GL_POINTS, GL_LINE, etc.)
 
@@ -317,6 +307,7 @@ class GlLayer {
       glEnableVertexAttribArray(posAttrib);
       glVertexAttribPointer(posAttrib, 3, GL_FLOAT, GL_FALSE, 0, 0);
     }
+    this->color = glGetUniformLocation(this->sp, "incolor");
   }
 
   void RotateView( const std::string &uniformName
@@ -408,9 +399,9 @@ int SDL_main(int argc, char **argv) {
   mapLayer.RotateView( "view" , rots , trans);
 
   GlLayer mapWallLayer;
-  mapLayer.BindVB(verticesT);
-  mapLayer.BindIB(indicesW);
-  mapLayer.CompileShaderProgram( vertexSource
+  mapWallLayer.BindVB(verticesT);
+  mapWallLayer.BindIB(indicesW);
+  mapWallLayer.CompileShaderProgram( vertexSource
                                  , fragmentSource
                                  , std::vector<std::string>(1,"position")
                                  );
@@ -422,7 +413,7 @@ int SDL_main(int argc, char **argv) {
   gridLayer.BindVB(verticesL);
   gridLayer.BindIB(indicesL);
   gridLayer.CompileShaderProgram( vertexSource
-                                 , fragmentSourceWhite
+                                 , fragmentSource
                                  , std::vector<std::string>(1,"position")
                                  );
   glDrawElements(GL_LINES,indicesL.size()*sizeof(glm::vec2),GL_UNSIGNED_INT,NULL);
@@ -456,6 +447,12 @@ int SDL_main(int argc, char **argv) {
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
   glGenerateMipmap(GL_TEXTURE_2D);
+
+float pixels[] = {
+    0.0f, 0.0f, 0.0f,   1.0f, 1.0f, 1.0f,
+    1.0f, 1.0f, 1.0f,   0.0f, 0.0f, 0.0f
+};
+glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 2, 2, 0, GL_RGB, GL_FLOAT, pixels);
 
   // Wait for the user to quit
   bool quit = false;
@@ -567,14 +564,17 @@ int SDL_main(int argc, char **argv) {
     }
 
     mapLayer.UseThisLayer();
+    glUniform3f(mapLayer.color, 1.0f, 0.0f, 1.0f);
     glDrawElements(GL_TRIANGLES,indicesT.size()*sizeof(glm::vec2),GL_UNSIGNED_INT,NULL);
     mapLayer.RotateView( "view" , rots , trans);
 
     mapWallLayer.UseThisLayer();
+    glUniform3f(mapWallLayer.color, 0.8f, 0.0f, 0.8f);
     glDrawElements(GL_TRIANGLES,indicesW.size()*sizeof(glm::vec2),GL_UNSIGNED_INT,NULL);
     mapWallLayer.RotateView( "view" , rots , trans);
 
     gridLayer.UseThisLayer();
+    glUniform3f(gridLayer.color, 1.0f, 1.0f, 1.0f);
     glDrawElements(GL_LINES,indicesL.size()*sizeof(glm::vec2),GL_UNSIGNED_INT,NULL);
     gridLayer.RotateView( "view" , rots , trans);
 
