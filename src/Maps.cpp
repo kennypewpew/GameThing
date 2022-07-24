@@ -35,6 +35,22 @@ void PrintMapFile( const Map &mp ) {
     }
     printf("\n");
   }
+  if ( mp._extras.size() ) {
+    int next = 0;
+    for ( int i = 0 ; i < mp._ydim ; ++i ) {
+      for ( int j = 0 ; j < mp._xdim ; ++j ) {
+        if ( next == mp._extras.size() ) printf("  .");
+        else {
+          if ( mp._extras[next].x == j && mp._extras[next].y == i ) {
+            printf("  %d", mp._extras[next].height);
+            ++next;
+          }
+          else printf("  .");
+        }
+      }
+      printf("\n");
+    }
+  }
 }
 
 Map ReadMapFile( const std::string &mapFile ) {

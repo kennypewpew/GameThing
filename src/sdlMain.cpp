@@ -105,15 +105,49 @@ void GenerateIndicesLines( std::vector<GLuint> &indices , int n ) {
   }
 }
 
+void AddIndexTriangle( std::vector<GLuint> &i
+                     , const int &v1
+                     , const int &v2
+                     , const int &v3
+                     ) {
+  i.push_back(v1);
+  i.push_back(v2);
+  i.push_back(v3);
+}
+
 void GenerateIndicesTriangles( std::vector<GLuint> &indices , int n ) {
   for ( int i = 0 ; i < n ; ++i ) {
-    indices.push_back(4*i+0);
-    indices.push_back(4*i+1);
-    indices.push_back(4*i+2);
-    indices.push_back(4*i+3);
-    indices.push_back(4*i+0);
-    indices.push_back(4*i+2);
+    AddIndexTriangle(indices, 4*i , 4*i + 1 , 4*i + 2 );
+    AddIndexTriangle(indices, 4*i , 4*i + 2 , 4*i + 3 );
   }
+}
+
+float CoordToValue(const int &c, const int &max) {
+  float factor = 1.5;
+  return factor*float(c)/float(max) - factor/2.;
+}
+
+float HeightToValue( const int &h ) {
+  float factor = 100.;
+  return float(h) / factor;
+}
+
+void AddSquareTile( std::vector<glm::vec3> &vertices
+                  , const int &x
+                  , const int &xdim
+                  , const int &y
+                  , const int &ydim
+                  , const int &z
+                  ) {
+  float xx1 = CoordToValue( x   , xdim );
+  float yy1 = CoordToValue( y   , ydim );
+  float xx2 = CoordToValue( x+1 , xdim );
+  float yy2 = CoordToValue( y+1 , ydim );
+  float zz = HeightToValue(z);
+  vertices.push_back(glm::vec3(xx1,yy1,zz));
+  vertices.push_back(glm::vec3(xx1,yy2,zz));
+  vertices.push_back(glm::vec3(xx2,yy2,zz));
+  vertices.push_back(glm::vec3(xx2,yy1,zz));
 }
 
 void FillVertsAndInds( std::vector<glm::vec3> &vertices
@@ -123,24 +157,104 @@ void FillVertsAndInds( std::vector<glm::vec3> &vertices
                      ) {
   int xdim = mp._xdim;
   int ydim = mp._ydim;
-  int cnt = 0;
-  for ( int x = 0 ; x < xdim ; ++x ) {
-    for ( int y = 0 ; y < ydim ; ++y ) {
-      float xx1 = 1.5*float(x)/float(xdim)-.75;
-      float yy1 = 1.5*float(y)/float(ydim)-.75;
-      float xx2 = 1.5*float(x+1)/float(xdim)-.75;
-      float yy2 = 1.5*float(y+1)/float(ydim)-.75;
-      float zz = (mp.h(x,y))/100.;
-      vertices.push_back(glm::vec3(xx1,yy1,zz));
-      vertices.push_back(glm::vec3(xx1,yy2,zz));
-      vertices.push_back(glm::vec3(xx2,yy2,zz));
-      vertices.push_back(glm::vec3(xx2,yy1,zz));
-      cnt += 4;
+  for ( int y = 0 ; y < ydim ; ++y ) {
+    for ( int x = 0 ; x < xdim ; ++x ) {
+      AddSquareTile( vertices , x , xdim , y , ydim , mp.h(x,y) );
     }
   }
-  if ( type == GL_LINES     ) GenerateIndicesLines    ( indices , xdim*ydim );
-  if ( type == GL_TRIANGLES ) GenerateIndicesTriangles( indices , xdim*ydim );
+  for ( int i = 0 ; i < mp._extras.size() ; ++i ) {
+    int x = mp._extras[i].x;
+    int y = mp._extras[i].y;
+    int h = mp._extras[i].height;
+    AddSquareTile( vertices , x , xdim , y , ydim , h );
+  }
+  if ( type == GL_LINES     ) GenerateIndicesLines    ( indices , xdim*ydim + mp._extras.size() );
+  if ( type == GL_TRIANGLES ) GenerateIndicesTriangles( indices , xdim*ydim + mp._extras.size() );
 }
+
+bool CoordInVector( const Coord2D &c , const std::vector<Coord2D> &v ) {
+  for ( size_t i = 0 ; i < v.size() ; ++i ) {
+    if ( c.x == v[i].x && c.y == v[i].y ) return true;
+  }
+  return false;
+}
+
+void FillWallIndices( std::vector<GLuint> &inds , const Map &mp ) {
+  // Check for openings
+  std::vector<Coord2D> xskip;
+  std::vector<Coord2D> yskip;
+  for ( size_t i = 0 ; i < mp._extras.size() ; ++i ) {
+    for ( size_t j = 0 ; j < mp._extras[i].connections.size() ; ++j ) {
+      int xdiff = mp._extras[i].connections[j].x - mp._extras[i].x;
+      int ydiff = mp._extras[i].connections[j].y - mp._extras[i].y;
+      if      ( xdiff > 0 ) xskip.push_back( (Coord2D){ mp._extras[i].x   , mp._extras[i].y   } );
+      else if ( xdiff < 0 ) xskip.push_back( (Coord2D){ mp._extras[i].x-1 , mp._extras[i].y   } );
+      else if ( ydiff > 0 ) yskip.push_back( (Coord2D){ mp._extras[i].x   , mp._extras[i].y   } );
+      else if ( ydiff < 0 ) yskip.push_back( (Coord2D){ mp._extras[i].x   , mp._extras[i].y-1 } );
+
+      int cnt1 = 4*mp._extras[i].connections[j].x + 4*mp._xdim*mp._extras[i].connections[j].y;
+      int cnt2 = 4*i + 4*mp._xdim*mp._ydim;
+      int a1, a2, b1, b2;
+      if ( xdiff > 0 ) {
+        a1 = cnt1 + 0;
+        a2 = cnt1 + 1;
+        b1 = cnt2 + 2;
+        b2 = cnt2 + 3;
+      }
+      else if ( xdiff < 0 ) {
+        a1 = cnt1 + 2;
+        a2 = cnt1 + 3;
+        b1 = cnt2 + 0;
+        b2 = cnt2 + 1;
+      }
+      else if ( ydiff > 0 ) {
+        a1 = cnt1 + 3;
+        a2 = cnt1 + 0;
+        b1 = cnt2 + 1;
+        b2 = cnt2 + 2;
+      }
+      else if ( ydiff < 0 ) {
+        a1 = cnt1 + 1;
+        a2 = cnt1 + 2;
+        b1 = cnt2 + 3;
+        b2 = cnt2 + 0;
+      }
+      AddIndexTriangle( inds , a1 , a2 , b1 );
+      AddIndexTriangle( inds , a1 , b2 , b1 );
+    }
+  }
+
+  int xdim = mp._xdim;
+  int ydim = mp._ydim;
+
+  // y direction walls
+  for ( int y = 0 ; y < ydim-1 ; ++y ) {
+    for ( int x = 0 ; x < xdim ; ++x ) {
+      if ( CoordInVector( (Coord2D){ x , y } , yskip ) ) continue;
+      int cnt = 4*x + 4*xdim*y;
+      int i_01 = cnt + 1;
+      int i_11 = cnt + 2;
+      int k_00 = cnt + 4*xdim;
+      int k_10 = cnt + 4*xdim + 3;
+      AddIndexTriangle( inds , i_01 , i_11, k_00 );
+      AddIndexTriangle( inds , i_11 , k_00, k_10 );
+    }
+  }
+  // x direction walls
+  for ( int y = 0 ; y < ydim ; ++y ) {
+    for ( int x = 0 ; x < xdim-1 ; ++x ) {
+      if ( CoordInVector( (Coord2D){ x , y } , xskip ) ) continue;
+      int cnt = 4*x + 4*xdim*y;
+      int i_11 = cnt + 2;
+      int i_10 = cnt + 3;
+      int j_00 = cnt + 4 + 0;
+      int j_01 = cnt + 4 + 1;
+      AddIndexTriangle( inds , i_10 , i_11, j_00 );
+      AddIndexTriangle( inds , i_11 , j_01, j_00 );
+    }
+  }
+}
+
 
 class GlLayer {
  public:
@@ -260,7 +374,7 @@ int SDL_main(int argc, char **argv) {
 
   InitializeSDL("GLES3+SDL2 Tutorial",DISP_WIDTH,DISP_HEIGHT);
 
-  glLineWidth(3.0f);
+  glLineWidth(5.0f);
   glEnable(GL_DEPTH_TEST);
 
   // Because my depth seems to be backwards from what's expected
@@ -275,11 +389,12 @@ int SDL_main(int argc, char **argv) {
 
 
   std::vector<glm::vec3> verticesL, verticesT;
-  std::vector<GLuint> indicesL, indicesT;
+  std::vector<GLuint> indicesL, indicesT, indicesW;
   //Map myMap = ReadMapFile("session/default/maps/example.map");
-  Map myMap = GenerateMap(7,7,std::vector<VerticalityFeatures>(1,HILL));
+  Map myMap = GenerateMap(7,7,std::vector<VerticalityFeatures>(1,MOUNTAIN));
   FillVertsAndInds( verticesL, indicesL , myMap , GL_LINES );
   FillVertsAndInds( verticesT, indicesT , myMap , GL_TRIANGLES );
+  FillWallIndices( indicesW , myMap );
 
   GlLayer mapLayer;
   mapLayer.BindVB(verticesT);
@@ -291,6 +406,17 @@ int SDL_main(int argc, char **argv) {
 
   glDrawElements(GL_TRIANGLES,indicesT.size()*sizeof(glm::vec2),GL_UNSIGNED_INT,NULL);
   mapLayer.RotateView( "view" , rots , trans);
+
+  GlLayer mapWallLayer;
+  mapLayer.BindVB(verticesT);
+  mapLayer.BindIB(indicesW);
+  mapLayer.CompileShaderProgram( vertexSource
+                                 , fragmentSource
+                                 , std::vector<std::string>(1,"position")
+                                 );
+
+  glDrawElements(GL_TRIANGLES,indicesW.size()*sizeof(glm::vec2),GL_UNSIGNED_INT,NULL);
+  mapWallLayer.RotateView( "view" , rots , trans);
 
   GlLayer gridLayer;
   gridLayer.BindVB(verticesL);
@@ -431,28 +557,34 @@ int SDL_main(int argc, char **argv) {
     if ( leftButtonDown ) {
       int xNow, yNow;
       uint32_t buttons = SDL_GetMouseState(&xNow,&yNow);
-      rots[ROTATE_Z].degrees += float(xNow - xLast)/100.;
-      rots[ROTATE_X].degrees += float(yNow - yLast)/100.;
+      rots[ROTATE_Z].degrees += float(xNow - xLast)/2.;
+      rots[ROTATE_X].degrees += float(yNow - yLast)/10.;
       if ( buttons & SDL_BUTTON_LMASK == 0 ) {
         leftButtonDown = false;
       }
+      xLast = xNow;
+      yLast = yNow;
     }
 
     mapLayer.UseThisLayer();
     glDrawElements(GL_TRIANGLES,indicesT.size()*sizeof(glm::vec2),GL_UNSIGNED_INT,NULL);
     mapLayer.RotateView( "view" , rots , trans);
 
+    mapWallLayer.UseThisLayer();
+    glDrawElements(GL_TRIANGLES,indicesW.size()*sizeof(glm::vec2),GL_UNSIGNED_INT,NULL);
+    mapWallLayer.RotateView( "view" , rots , trans);
+
     gridLayer.UseThisLayer();
     glDrawElements(GL_LINES,indicesL.size()*sizeof(glm::vec2),GL_UNSIGNED_INT,NULL);
     gridLayer.RotateView( "view" , rots , trans);
 
-    float x1 = 1.5*float(pos[0]  )/float(myMap._xdim)-.75;
-    float x2 = 1.5*float(pos[0]+1)/float(myMap._xdim)-.75;
-    float y1 = 1.5*float(pos[1]  )/float(myMap._ydim)-.75;
-    float y2 = 1.5*float(pos[1]+1)/float(myMap._ydim)-.75;
-    posVerts[0] = glm::vec3(x1,y1,myMap.h(pos[0],pos[1])/100.);
-    posVerts[1] = glm::vec3(x2,y1,myMap.h(pos[0],pos[1])/100.);
-    posVerts[2] = glm::vec3(x1,y2,(myMap.h(pos[0],pos[1])+10)/100.);
+    float x1 = CoordToValue( pos[0]   , myMap._xdim );
+    float x2 = CoordToValue( pos[0]+1 , myMap._xdim );
+    float y1 = CoordToValue( pos[1]   , myMap._xdim );
+    float y2 = CoordToValue( pos[1]+1 , myMap._xdim );
+    posVerts[0] = glm::vec3( x1 , y1 , HeightToValue( myMap.h(pos[0],pos[1])    ) );
+    posVerts[1] = glm::vec3( x2 , y1 , HeightToValue( myMap.h(pos[0],pos[1])    ) );
+    posVerts[2] = glm::vec3( x1 , y2 , HeightToValue( myMap.h(pos[0],pos[1])+10 ) );
     glBufferData(GL_ARRAY_BUFFER, posVerts.size()*sizeof(glm::vec3),glm::value_ptr(posVerts[0]), GL_STATIC_DRAW);
 
     actorLayer.UseThisLayer();

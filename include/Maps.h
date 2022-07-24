@@ -3,16 +3,34 @@
 #include <string>
 #include <GLES3/gl3.h>
 
+struct Coord2D {
+  int x;
+  int y;
+};
+
+struct Coord3D {
+  int x;
+  int y;
+  int z;
+};
 
 struct MapTile {
   uint8_t height;
   char type;
 };
 
+struct ExtraMapTile {
+  uint8_t height;
+  char type;
+  int x;
+  int y;
+  std::vector<Coord2D> connections;
+};
 
 class Map {
  public:
   std::vector<MapTile> _tiles;
+  std::vector<ExtraMapTile> _extras;
   int _xdim;
   int _ydim;
   Map(const int &x, const int &y);
