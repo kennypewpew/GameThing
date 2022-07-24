@@ -28,11 +28,39 @@ void SeedFeatureHILL( Map &m ) {
   }
 }
 
+void SeedFeatureMOUNTAIN( Map &m ) {
+  int w = m._xdim;
+  int l = m._ydim;
+  int x = rand() % w;
+  int y = rand() % l;
+  int hmax = w > l ? w : l;
+  hmax *= 4;
+  //m.h(x,y) = hmax;
+  for ( int i = 0 ; i < w ; ++i ) {
+    m.h(i,y) = hmax - 4*std::abs(x-i);
+  }
+  for ( int i = 0 ; i < l ; ++i ) {
+    m.h(x,i) = hmax - 4*std::abs(y-i);
+  }
+
+  ExtraMapTile e;
+  e.x = rand() % w;
+  e.y = rand() % l;
+  e.height = 0;
+  m._extras.push_back(e);
+  //e.y += 1;
+  //m._extras.push_back(e);
+  e.x += 1;
+  e.connections.push_back( (Coord2D){e.x,e.y-1} );
+  m._extras.push_back(e);
+}
+
 // Seed the initial features to ensure the features happen
 void SeedFeatures( Map &m , const std::vector<VerticalityFeatures> &ft ) {
-  for ( int i = 0 ; i < ft.size() ; ++i ) {
+  for ( size_t i = 0 ; i < ft.size() ; ++i ) {
     if ( ft[i] == FLAT ) SeedFeatureFLAT(m);
     if ( ft[i] == HILL ) SeedFeatureHILL(m);
+    if ( ft[i] == MOUNTAIN ) SeedFeatureMOUNTAIN(m);
   }
 }
 
@@ -78,7 +106,8 @@ Map GenerateMap( const int &w , const int &l , const std::vector<VerticalityFeat
 //int main(void) {
 //  std::vector<VerticalityFeatures> f;
 //  //f.push_back(FLAT);
-//  f.push_back(HILL);
+//  //f.push_back(HILL);
+//  f.push_back(MOUNTAIN);
 //  Map m = GenerateMap(8,8,f);
 //  PrintMapFile(m);
 //}

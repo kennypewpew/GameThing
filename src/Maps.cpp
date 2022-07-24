@@ -36,7 +36,7 @@ void PrintMapFile( const Map &mp ) {
     printf("\n");
   }
   if ( mp._extras.size() ) {
-    int next = 0;
+    size_t next = 0;
     for ( int i = 0 ; i < mp._ydim ; ++i ) {
       for ( int j = 0 ; j < mp._xdim ; ++j ) {
         if ( next == mp._extras.size() ) printf("  .");
@@ -76,7 +76,6 @@ Map ReadMapFile( const std::string &mapFile ) {
 
   for ( int i = 0 ; i < ydim ; ++i ) {
     getline(mapFl,ln);
-    int prev = 0;
     std::stringstream lnStream(ln);
     std::string e;
     for ( int j = 0 ; j < xdim ; ++j ) {

@@ -162,7 +162,7 @@ void FillVertsAndInds( std::vector<glm::vec3> &vertices
       AddSquareTile( vertices , x , xdim , y , ydim , mp.h(x,y) );
     }
   }
-  for ( int i = 0 ; i < mp._extras.size() ; ++i ) {
+  for ( size_t i = 0 ; i < mp._extras.size() ; ++i ) {
     int x = mp._extras[i].x;
     int y = mp._extras[i].y;
     int h = mp._extras[i].height;
@@ -180,6 +180,9 @@ bool CoordInVector( const Coord2D &c , const std::vector<Coord2D> &v ) {
 }
 
 void FillWallIndices( std::vector<GLuint> &inds , const Map &mp ) {
+  int xdim = mp._xdim;
+  int ydim = mp._ydim;
+
   // Check for openings
   std::vector<Coord2D> xskip;
   std::vector<Coord2D> yskip;
@@ -192,8 +195,8 @@ void FillWallIndices( std::vector<GLuint> &inds , const Map &mp ) {
       else if ( ydiff > 0 ) yskip.push_back( (Coord2D){ mp._extras[i].x   , mp._extras[i].y   } );
       else if ( ydiff < 0 ) yskip.push_back( (Coord2D){ mp._extras[i].x   , mp._extras[i].y-1 } );
 
-      int cnt1 = 4*mp._extras[i].connections[j].x + 4*mp._xdim*mp._extras[i].connections[j].y;
-      int cnt2 = 4*i + 4*mp._xdim*mp._ydim;
+      int cnt1 = 4*mp._extras[i].connections[j].x + 4*xdim*mp._extras[i].connections[j].y;
+      int cnt2 = 4*i + 4*xdim*ydim;
       int a1, a2, b1, b2;
       if ( xdiff > 0 ) {
         a1 = cnt1 + 0;
@@ -223,9 +226,6 @@ void FillWallIndices( std::vector<GLuint> &inds , const Map &mp ) {
       AddIndexTriangle( inds , a1 , b2 , b1 );
     }
   }
-
-  int xdim = mp._xdim;
-  int ydim = mp._ydim;
 
   // y direction walls
   for ( int y = 0 ; y < ydim-1 ; ++y ) {
@@ -324,7 +324,7 @@ class GlLayer {
                  , const std::vector<Translation> &translations
                  ) {
       glm::mat4 view = glm::mat4(1.0f);
-      for ( int i = 0 ; i < rotations.size() ; ++i ) {
+      for ( size_t i = 0 ; i < rotations.size() ; ++i ) {
         view = glm::rotate(view,glm::radians(rotations[i].degrees), rotations[i].vector);
       }
       GLint uniTrans = glGetUniformLocation(this->sp, uniformName.c_str());
@@ -462,7 +462,7 @@ int SDL_main(int argc, char **argv) {
   bool leftButtonDown = false;
   int xLast, yLast;
   while (!quit) {
-    uint32_t frameStart = SDL_GetTicks();
+    //uint32_t frameStart = SDL_GetTicks();
     SDL_Event event;
     if (SDL_PollEvent(&event) != 0) {
       if (event.type == SDL_QUIT) {
@@ -559,7 +559,7 @@ int SDL_main(int argc, char **argv) {
       uint32_t buttons = SDL_GetMouseState(&xNow,&yNow);
       rots[ROTATE_Z].degrees += float(xNow - xLast)/2.;
       rots[ROTATE_X].degrees += float(yNow - yLast)/10.;
-      if ( buttons & SDL_BUTTON_LMASK == 0 ) {
+      if ( buttons & (SDL_BUTTON_LMASK == 0) ) {
         leftButtonDown = false;
       }
       xLast = xNow;

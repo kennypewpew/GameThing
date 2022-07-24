@@ -11,6 +11,8 @@ enum VerticalityFeatures {
   , ROCKS
   , CLIFF
   , PLATEAU
+  , TUNNEL
+  , BRIDGE
   , HOUSE
   , CITY
   , TOWN
