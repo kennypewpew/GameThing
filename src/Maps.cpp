@@ -27,8 +27,11 @@ char Map::t(const int&x, const int&y) const {
 char& Map::t(const int&x, const int&y) {
   return _tiles[x+y*_xdim].type;
 }
+bool Map::InBounds( const int &x , const int &y ) {
+  return ( x >= 0 && x < _xdim && y >= 0 && y < _ydim );
+}
 
-void PrintMapFile( const Map &mp ) {
+void PrintMap( const Map &mp ) {
   for ( int i = 0 ; i < mp._ydim ; ++i ) {
     for ( int j = 0 ; j < mp._xdim ; ++j ) {
       printf("  %d",mp.h(j,i));

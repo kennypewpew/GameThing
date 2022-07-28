@@ -1,6 +1,8 @@
 #include <SDL.h>
 #include <SDL_opengles2.h>
 #include <GLES3/gl3.h>
+#include <EGL/egl.h>
+
 #include <string>
 
 #include "Window.h"
@@ -10,7 +12,17 @@ SDL_Window *window = NULL;
 // The OpenGL context
 SDL_GLContext context = NULL;
 
+PFNGLGENVERTEXARRAYSOESPROC glGenVertexArraysOES;
+PFNGLBINDVERTEXARRAYOESPROC glBindVertexArrayOES;
+PFNGLDELETEVERTEXARRAYSOESPROC glDeleteVertexArraysOES;
+PFNGLISVERTEXARRAYOESPROC glIsVertexArrayOES;
+
 int InitializeSDL(const std::string &title,const int&WindowWidth, const int &WindowHeight) {
+  glGenVertexArraysOES = (PFNGLGENVERTEXARRAYSOESPROC)eglGetProcAddress ( "glGenVertexArraysOES" );
+  glBindVertexArrayOES = (PFNGLBINDVERTEXARRAYOESPROC)eglGetProcAddress ( "glBindVertexArrayOES" );
+  glDeleteVertexArraysOES = (PFNGLDELETEVERTEXARRAYSOESPROC)eglGetProcAddress ( "glDeleteVertexArraysOES" );
+  glIsVertexArrayOES = (PFNGLISVERTEXARRAYOESPROC)eglGetProcAddress ( "glIsVertexArrayOES" );
+
   if ( NULL != window || NULL != context ) {
     SDL_Log("Failed to initialize : Detected existing window/context\n");
   }
@@ -47,6 +59,10 @@ int InitializeSDL(const std::string &title,const int&WindowWidth, const int &Win
         "Couldn't create an OpenGL context.", NULL);
     return EXIT_FAILURE;
   }
+
+  glEnable(GL_BLEND);
+  glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
+
   return 0;
 }
 

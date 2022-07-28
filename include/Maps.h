@@ -25,6 +25,7 @@ struct ExtraMapTile {
   int x;
   int y;
   std::vector<Coord2D> connections;
+  std::vector<int> extra_connections;
 };
 
 class Map {
@@ -33,14 +34,16 @@ class Map {
   std::vector<ExtraMapTile> _extras;
   int _xdim;
   int _ydim;
+  Map() {}
   Map(const int &x, const int &y);
   uint8_t h(const int&x, const int&y) const;
   uint8_t& h(const int&x, const int&y);
   char t(const int&x, const int&y) const;
   char& t(const int&x, const int&y);
+  bool InBounds( const int &x , const int &y );
 };
 
-void PrintMapFile( const Map &mp );
+void PrintMap( const Map &mp );
 
 Map ReadMapFile( const std::string &mapFile );
 

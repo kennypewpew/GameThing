@@ -16,17 +16,16 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
+#include <cmath>
 
 #include "Maps.h"
 #include "MapGen.h"
 #include "Window.h"
+#include "GlLayer.h"
+#include "Types.h"
+#include "Actor.h"
 
-#include <EGL/egl.h>
-
-PFNGLGENVERTEXARRAYSOESPROC glGenVertexArraysOES;
-PFNGLBINDVERTEXARRAYOESPROC glBindVertexArrayOES;
-PFNGLDELETEVERTEXARRAYSOESPROC glDeleteVertexArraysOES;
-PFNGLISVERTEXARRAYOESPROC glIsVertexArrayOES;
+#include "stb_image.h"
 
 const unsigned int DISP_WIDTH = 480;
 const unsigned int DISP_HEIGHT = 960;
@@ -40,10 +39,12 @@ const char* vertexSource = R"glsl(
     precision mediump float;
     in mediump vec3 position;
     uniform mat4 view;
+    uniform mat4 zoom;
+    uniform mat4 shift;
 
     void main()
     {
-        gl_Position = view * vec4(position, 1.0);
+        gl_Position = zoom * view * shift * vec4(position, 1.0);
     }
 )glsl";
 
@@ -52,11 +53,43 @@ const char* fragmentSource = R"glsl(
 
     precision mediump float;
     out mediump vec4 fragColor;
-    uniform vec3 incolor;
+    uniform vec4 incolor;
 
     void main()
     {
-        fragColor = vec4(incolor, 1.0);
+        fragColor = incolor;
+    }
+)glsl";
+
+const char* vertexSourceTexture = R"glsl(
+    #version 300 es
+
+    precision mediump float;
+    in mediump vec3 position;
+    in mediump vec2 texCoord;
+    out mediump vec2 tCoord;
+    uniform mat4 zoom;
+    uniform mat4 view;
+    uniform mat4 shift;
+
+    void main()
+    {
+        gl_Position = zoom * view * shift * vec4(position, 1.0);
+        tCoord = texCoord;
+    }
+)glsl";
+
+const char* fragmentSourceTexture = R"glsl(
+    #version 300 es
+
+    precision mediump float;
+    in mediump vec2 tCoord;
+    out mediump vec4 fragColor;
+    uniform sampler2D applyTexture;
+
+    void main()
+    {
+        fragColor = texture(applyTexture,tCoord);
     }
 )glsl";
 
@@ -67,11 +100,13 @@ const char* vertexSourceID = R"glsl(
     in mediump vec3 position;
     in mediump vec3 incolor;
     uniform mat4 view;
+    uniform mat4 zoom;
+    uniform mat4 shift;
     out mediump vec3 t_color;
 
     void main()
     {
-        gl_Position = view * vec4(position, 1.0);
+        gl_Position = zoom * view * shift * vec4(position, 1.0);
         t_color = incolor;
     }
 )glsl";
@@ -88,31 +123,6 @@ const char* fragmentSourceID = R"glsl(
         fragColor = vec4(t_color, 1.0);
     }
 )glsl";
-
-void shaderCompileCheck(GLint s) {
-  GLint status;
-  glGetShaderiv(s, GL_COMPILE_STATUS, &status);
-  if ( status != GL_TRUE ) {
-    char buffer[512];
-    glGetShaderInfoLog(s, 512, NULL, buffer);
-    printf("%s\n",buffer);
-  }
-}
-
-class Rotation {
- public:
-  float degrees;
-  glm::vec3 vector;
-  Rotation(const float &d, const glm::vec3 &v) : degrees(d) , vector(v) {}
-  Rotation() {}
-};
-
-class Translation {
- public:
-  float distance;
-  glm::vec3 vector;
-  Translation(const float &d, const glm::vec3 &v) : distance(d) , vector(v) {}
-};
 
 void GenerateIndicesLines( std::vector<GLuint> &indices , int n ) {
   for ( int i = 0 ; i < n ; ++i ) {
@@ -140,14 +150,14 @@ void GenerateIndicesTriangles( std::vector<GLuint> &indices , int n ) {
   }
 }
 
+float FACTOR = 1.5;
 float CoordToValue(const int &c, const int &max) {
-  float factor = 1.5;
-  return factor*float(c)/float(max) - factor/2.;
+  return FACTOR*float(c)/float(max) - FACTOR/2.;
 }
 
-float HeightToValue( const int &h ) {
-  float factor = 100.;
-  return float(h) / factor;
+float HFACTOR = 100;
+float HeightToValue( const float &h ) {
+  return float(h) / HFACTOR;
 }
 
 // Coordinates are 1-indexed instead of 0-indexed so out of bounds doesn't return (0,0)
@@ -175,12 +185,20 @@ void AddSquareTileColorID( std::vector<glm::vec3> &colors
   }
 }
 
+void AddSquareTileTextureCoords( std::vector<glm::vec2> &textureCoords ) {
+  textureCoords.push_back(glm::vec2(0.,0.));
+  textureCoords.push_back(glm::vec2(0.,1.));
+  textureCoords.push_back(glm::vec2(1.,1.));
+  textureCoords.push_back(glm::vec2(1.,0.));
+}
+
+
 void AddSquareTile( std::vector<glm::vec3> &vertices
                   , const int &x
                   , const int &xdim
                   , const int &y
                   , const int &ydim
-                  , const int &z
+                  , const float &z
                   ) {
   float xx1 = CoordToValue( x   , xdim );
   float yy1 = CoordToValue( y   , ydim );
@@ -191,6 +209,27 @@ void AddSquareTile( std::vector<glm::vec3> &vertices
   vertices.push_back(glm::vec3(xx1,yy2,zz));
   vertices.push_back(glm::vec3(xx2,yy2,zz));
   vertices.push_back(glm::vec3(xx2,yy1,zz));
+}
+
+void GetTileCoords( const GLuint &tileBuffer, const Map &map , int *outCoords ) {
+  int xRightClick, yRightClick;
+  SDL_GetMouseState(&xRightClick,&yRightClick);
+  glBindFramebuffer(GL_FRAMEBUFFER,tileBuffer);
+  GLubyte data[4];
+  glReadPixels(xRightClick,DISP_HEIGHT-yRightClick,1,1,GL_RGBA,GL_UNSIGNED_BYTE,data);
+  glBindFramebuffer(GL_FRAMEBUFFER, 0);
+  //printf("%d , %d , %d\n", data[0] , data[1] , data[2]);
+  int x = ColorToCoord(data[0],map._xdim);
+  int y = ColorToCoord(data[1],map._ydim);
+  int e = ColorToCoord(data[2],map._extras.size())-1;
+  //printf("%d , %d , %d\n", x , y , e );
+  if ( x >= 0 && x < map._xdim && y >= 0 && y < map._ydim ) {
+    outCoords[0] = x;
+    outCoords[1] = y;
+    if ( e > -1 ) outCoords[2] = map._extras[e].height;
+    else          outCoords[2] = map.h(x,y);
+    outCoords[3] = e;
+  }
 }
 
 void FillVertsAndInds( std::vector<glm::vec3> &vertices
@@ -298,324 +337,255 @@ void FillWallIndices( std::vector<GLuint> &inds , const Map &mp ) {
   }
 }
 
-
-class GlLayer {
+class BattleMap {
  public:
-  GLuint va; // Vertex array
-  GLuint *vb; // Vertex buffer
-  GLuint ib; // Vertex array
-  GLuint sp; // Shader program
-  GLuint color; // Color uniform location
-  GLuint *aptr; // Attribute pointers
+    std::vector<Rotation> rots;
+    std::vector<Translation> trans;
+    std::vector<glm::vec3> verticesGridLines, verticesTileTriangles;
+    std::vector<glm::vec3> verticesTileTrianglesUp;
+    std::vector<GLuint> indicesGridLines, indicesTriangles, indicesTileWalls;
+    std::vector<glm::vec3> colorIDs;
+    std::vector<glm::vec2> verticesTexture;
+    GLuint coordinateBuffer;
+    ActorTetrahedron tet1;
+    bool quit;
+    bool leftButtonDown;
+    int xLast, yLast;
+    float magnification = 0.8;
+    glm::mat4 zoomLevel;
+    glm::mat4 shiftMatrix;
+    glm::mat4 view;
+    glm::vec3 shiftVector;
+    Map myMap, bufferMap;
+    std::vector<glm::vec3> verticesMoveOverlay;
+    std::vector<GLuint> indicesMoveOverlay;
 
-  GLenum drawType; // Type of drawing (GL_POINTS, GL_LINE, etc.)
 
-  GlLayer( const char *vShader
-         , const char *fShader
-         , const std::vector<std::string> inputs
-         ) {
-    int nInputs = inputs.size();
-    glGenVertexArraysOES(1,&this->va);
-    glBindVertexArrayOES(this->va);
+  BattleMap() {
 
-    vb = new GLuint[nInputs];
-    glGenBuffers(nInputs, this->vb);
-    aptr = new GLuint[nInputs];
+    InitializeSDL("GLES3+SDL2 Tutorial",DISP_WIDTH,DISP_HEIGHT);
 
-    glGenBuffers(1, &this->ib);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,this->ib);
+    glEnable(GL_DEPTH_TEST);
 
-    this->sp = GL_INVALID_VALUE;
+    this->rots = std::vector<Rotation>(ROTATE_TOTAL);
+    this->rots[ROTATE_X] = Rotation(-65.f,glm::vec3(1.f,0.f,0.f));
+    this->rots[ROTATE_Y] = Rotation(  0.f,glm::vec3(0.f,1.f,0.f));
+    this->rots[ROTATE_Z] = Rotation( 45.f,glm::vec3(0.f,0.f,1.f));
 
-    this->CompileShaderProgram( vShader , fShader , inputs );
+    this->zoomLevel = glm::scale(glm::mat4(1.f),glm::vec3(this->magnification,this->magnification,this->magnification));
+
+    this->shiftVector = glm::vec3(0.0f,0.f,0.f);
+    this->shiftMatrix = glm::translate(glm::mat4(1.f), this->shiftVector);
+
+    // Because my depth seems to be backwards from what's expected
+    glDepthFunc(GL_GREATER);
+    glClearDepthf(0.f);
+
+    this->quit = false;
+    this->leftButtonDown = false;
   }
-  ~GlLayer(){
-    delete[] vb;
-    delete[] aptr;
-  }
 
-  void BindVB( std::vector<glm::vec3> &v , int iBuf = 0 , GLenum usage = GL_STATIC_DRAW ) {
-    glBindBuffer(GL_ARRAY_BUFFER, this->vb[iBuf]);
-    glVertexAttribPointer(aptr[iBuf], 3, GL_FLOAT, GL_FALSE, 0, 0);
-    glBufferData(GL_ARRAY_BUFFER, v.size()*sizeof(glm::vec3), glm::value_ptr(v[0]), usage);
-  }
-
-  void BindIB( std::vector<GLuint> &i , GLenum usage = GL_STATIC_DRAW ) {
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint)*i.size(), i.data(), usage);
-  }
-
-  void CompileShaderProgram( const char *vShader
-                           , const char *fShader
-                           , const std::vector<std::string> inputs
-                           ) {
-    this->sp = glCreateProgram();
-
-    // Compile shaders
-    if ( vShader != NULL ) {
-      GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);
-      glShaderSource(vertexShader,1,&vShader,NULL);
-      glCompileShader(vertexShader);
-      shaderCompileCheck(vertexShader);
-      glAttachShader(this->sp, vertexShader);
+  void CreateTileRenderBuffer() {
+    glGenFramebuffers(1,&this->coordinateBuffer);
+    unsigned int rbo[2];
+    glGenRenderbuffers(2, rbo);
+    glBindFramebuffer(GL_FRAMEBUFFER,this->coordinateBuffer);
+    glBindRenderbuffer(GL_RENDERBUFFER, rbo[0]);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_RGB8, DISP_WIDTH, DISP_HEIGHT);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, rbo[0]);
+    glBindRenderbuffer(GL_RENDERBUFFER, rbo[1]);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT16, DISP_WIDTH, DISP_HEIGHT);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, rbo[1]);
+    if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+      std::cout << "Failed to bind tile coordinate buffer\n";
     }
+    glBindFramebuffer(GL_FRAMEBUFFER,0);
+  }
 
-    if ( fShader != NULL ) {
-      GLuint fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
-      glShaderSource(fragmentShader,1,&fShader,NULL);
-      glCompileShader(fragmentShader);
-      shaderCompileCheck(fragmentShader);
-      glAttachShader(this->sp, fragmentShader);
+  void UpdateViewTransformation() {
+    //mapTileLayer.RotateView( "view" , this->rots , this->trans);
+    this->view = this->zoomLevel;
+    for ( size_t i = 0 ; i < this->rots.size() ; ++i ) {
+      this->view = glm::rotate(this->view,glm::radians(this->rots[i].degrees), this->rots[i].vector);
     }
+    for ( size_t i = 0 ; i < this->trans.size() ; ++i ) {
+      this->view = glm::translate(this->view,this->trans[i].vector);
+    }
+    this->view *= this->shiftMatrix;
 
-    glLinkProgram(this->sp);
-    glUseProgram(this->sp);
+    ////mapTileLayer.ZoomView( "zoom" , this->zoomLevel );
+    //GLint uniTrans = glGetUniformLocation(this->sp, uniformName.c_str());
+    //glUniformMatrix4fv(uniTrans, 1, GL_FALSE, glm::value_ptr(zoom));
 
-    for ( size_t i = 0 ; i < inputs.size() ; ++i ) {
-      std::string s = inputs[i];
-      aptr[i] = glGetAttribLocation(this->sp,s.c_str());
-      if ( aptr[i] == GLuint(-1) ) {
-        printf("Failed to find attribute: %s\n",s.c_str());
-        continue;
+    ////mapTileLayer.ShiftView( "shift" , this->shiftMatrix );
+    //GLint uniTrans = glGetUniformLocation(this->sp, uniformName.c_str());
+    //glUniformMatrix4fv(uniTrans, 1, GL_FALSE, glm::value_ptr(shift));
+
+// zoom * view * shift
+  }
+
+
+  void DrawTileIdLayer(GlLayer &mapLayer) {
+    glBindFramebuffer(GL_FRAMEBUFFER,this->coordinateBuffer);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    mapLayer.UseThisLayer();
+    mapLayer.BindVB(2);
+    mapLayer.SetView( "view" , this->view );
+    glDrawElements(GL_TRIANGLES,this->indicesTriangles.size()*sizeof(glm::vec2),GL_UNSIGNED_INT,NULL);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+  }
+
+  void DrawMapOverlay(GlLayer &mapTileLayer) {
+    mapTileLayer.UseThisLayer();
+    glUniform4f(mapTileLayer.uni[0], 1.0f, 0.0f, 0.0f, 0.5f);
+    mapTileLayer.SetView( "view" , this->view );
+    mapTileLayer.BindCopyVB( this->verticesMoveOverlay , 3 );
+    mapTileLayer.BindCopyIB( this->indicesMoveOverlay );
+    glDrawElements(GL_TRIANGLES,this->indicesMoveOverlay.size()*sizeof(glm::vec2),GL_UNSIGNED_INT,NULL);
+  }
+
+  void DrawMapTiles(GlLayer &mapTileLayer) {
+    mapTileLayer.UseThisLayer();
+    glUniform4f(mapTileLayer.uni[0], 1.0f, 0.0f, 1.0f, 1.f);
+    mapTileLayer.SetView( "view" , this->view );
+    glDrawElements(GL_TRIANGLES,this->indicesTriangles.size()*sizeof(glm::vec2),GL_UNSIGNED_INT,NULL);
+  }
+
+  void DrawMapWalls(GlLayer &mapWallLayer) {
+    mapWallLayer.UseThisLayer();
+    glUniform4f(mapWallLayer.uni[0], 0.8f, 0.0f, 0.8f, 0.9f);
+    mapWallLayer.SetView( "view" , this->view );
+    glDrawElements(GL_TRIANGLES,this->indicesTileWalls.size()*sizeof(glm::vec2),GL_UNSIGNED_INT,NULL);
+  }
+
+  void DrawGridLines(GlLayer &gridLayer) {
+    glLineWidth(5.0f);
+    gridLayer.UseThisLayer();
+    glUniform4f(gridLayer.uni[0], 1.0f, 1.0f, 1.0f, 1.f);
+    gridLayer.SetView( "view" , this->view );
+    glDrawElements(GL_LINES,this->indicesGridLines.size()*sizeof(glm::vec2),GL_UNSIGNED_INT,NULL);
+    glLineWidth(1.0f);
+  }
+
+  void DrawActor(GlLayer &actorLayer , const std::vector<Translation> &shift) {
+    actorLayer.UseThisLayer();
+    glUniform4f(actorLayer.uni[0], 0.5f, 0.5f, 0.5f, 1.f);
+    glBufferData(GL_ARRAY_BUFFER, tet1.posVerts.size()*sizeof(glm::vec3),glm::value_ptr(tet1.posVerts[0]), GL_STATIC_DRAW);
+    actorLayer.RotateView( "view" , this->rots , shift );
+    actorLayer.ZoomView( "zoom" , this->zoomLevel );
+    actorLayer.ShiftView( "shift" , this->shiftMatrix );
+    glDrawArrays(GL_TRIANGLES,0,9);
+  }
+
+  //void DrawFrame() {
+  //  glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+  //  glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+  //  DrawTileIdLayer(mapLayer);
+  //  DrawMapTiles(mapTileLayer);
+  //  DrawMapWalls(mapWallLayer);
+  //  DrawGridLines(gridLayer);
+
+  //  tet1.UpdateVerts(this->myMap);
+  //  DrawActor(actorLayer);
+
+  //  SwapWindows();
+  //}
+
+  void FillColorIDs( const Map &myMap ) {
+    for ( int y = 0 ; y < this->myMap._ydim ; ++y ) {
+      for ( int x = 0 ; x < this->myMap._xdim ; ++x ) {
+	AddSquareTileColorID( this->colorIDs , x , y , 0 , this->myMap._xdim , this->myMap._ydim , this->myMap._extras.size() );
       }
-      glEnableVertexAttribArray(aptr[i]);
-      glVertexAttribPointer(aptr[i], 3, GL_FLOAT, GL_FALSE, 0, 0);
     }
-    this->color = glGetUniformLocation(this->sp, "incolor");
-  }
-
-  void RotateView( const std::string &uniformName
-                 , const std::vector<Rotation> &rotations
-                 , const std::vector<Translation> &translations
-                 ) {
-      glm::mat4 view = glm::mat4(1.0f);
-      for ( size_t i = 0 ; i < rotations.size() ; ++i ) {
-        view = glm::rotate(view,glm::radians(rotations[i].degrees), rotations[i].vector);
-      }
-      GLint uniTrans = glGetUniformLocation(this->sp, uniformName.c_str());
-      glUniformMatrix4fv(uniTrans, 1, GL_FALSE, glm::value_ptr(view));
-  }
-
-  void UseThisLayer() {
-    glBindVertexArrayOES(this->va);
-    glUseProgram(this->sp);
-  }
-
-
-};
-
-enum RotationAxes {
-    ROTATE_X
-  , ROTATE_Y
-  , ROTATE_Z
-  , ROTATE_TOTAL
-};
-
-void checkShaderCompile(GLuint s) {
-  GLint success = 0;
-  glGetShaderiv(s,GL_COMPILE_STATUS,&success);
-  if(success == GL_FALSE)
-  {
-  	GLint maxLength = 0;
-  	glGetShaderiv(s, GL_INFO_LOG_LENGTH, &maxLength);
-  
-  	// The maxLength includes the NULL character
-  	std::vector<GLchar> errorLog(maxLength);
-  	glGetShaderInfoLog(s, maxLength, &maxLength, &errorLog[0]);
-  
-  	// Provide the infolog in whatever manor you deem best.
-  	// Exit with failure.
-  	glDeleteShader(s); // Don't leak the shader.
-  	return;
-  }
-}
-
-
-int SDL_main(int argc, char **argv) {
-  glGenVertexArraysOES = (PFNGLGENVERTEXARRAYSOESPROC)eglGetProcAddress ( "glGenVertexArraysOES" );
-  glBindVertexArrayOES = (PFNGLBINDVERTEXARRAYOESPROC)eglGetProcAddress ( "glBindVertexArrayOES" );
-  glDeleteVertexArraysOES = (PFNGLDELETEVERTEXARRAYSOESPROC)eglGetProcAddress ( "glDeleteVertexArraysOES" );
-  glIsVertexArrayOES = (PFNGLISVERTEXARRAYOESPROC)eglGetProcAddress ( "glIsVertexArrayOES" );
-
-  InitializeSDL("GLES3+SDL2 Tutorial",DISP_WIDTH,DISP_HEIGHT);
-
-  glLineWidth(5.0f);
-  glEnable(GL_DEPTH_TEST);
-
-  // Because my depth seems to be backwards from what's expected
-  glDepthFunc(GL_GREATER);
-  glClearDepthf(0.f);
-
-  std::vector<Rotation> rots(ROTATE_TOTAL);
-  std::vector<Translation> trans;
-  rots[ROTATE_X] = Rotation(-65.f,glm::vec3(1.f,0.f,0.f));
-  rots[ROTATE_Y] = Rotation(  0.f,glm::vec3(0.f,1.f,0.f));
-  rots[ROTATE_Z] = Rotation( 45.f,glm::vec3(0.f,0.f,1.f));
-
-
-  std::vector<glm::vec3> verticesL, verticesT;
-  std::vector<GLuint> indicesL, indicesT, indicesW;
-  //Map myMap = ReadMapFile("session/default/maps/example.map");
-  Map myMap = GenerateMap(7,7,std::vector<VerticalityFeatures>(1,MOUNTAIN));
-  FillVertsAndInds( verticesL, indicesL , myMap , GL_LINES );
-  FillVertsAndInds( verticesT, indicesT , myMap , GL_TRIANGLES );
-  FillWallIndices( indicesW , myMap );
-
-  std::vector<glm::vec3> colorIDs;
-  for ( int y = 0 ; y < myMap._ydim ; ++y ) {
-    for ( int x = 0 ; x < myMap._xdim ; ++x ) {
-      AddSquareTileColorID( colorIDs , x , y , 0 , myMap._xdim , myMap._ydim , myMap._extras.size() );
+    for ( size_t i = 0 ; i < this->myMap._extras.size() ; ++i ) {
+      ExtraMapTile e = this->myMap._extras[i];
+      AddSquareTileColorID( this->colorIDs , e.x , e.y , i+1 , this->myMap._xdim , this->myMap._ydim , this->myMap._extras.size() );
     }
   }
-  for ( size_t i = 0 ; i < myMap._extras.size() ; ++i ) {
-    ExtraMapTile e = myMap._extras[i];
-    AddSquareTileColorID( colorIDs , e.x , e.y , i+1 , myMap._xdim , myMap._ydim , myMap._extras.size() );
+
+  void ShiftMap( const float &dist , const int &rotate ) {
+    this->shiftVector += dist * glm::vec3(
+          glm::sin(glm::radians(rots[ROTATE_Z].degrees + rotate))
+        , glm::cos(glm::radians(rots[ROTATE_Z].degrees + rotate))
+        , 0.
+        );
+    this->shiftMatrix = glm::translate(glm::mat4(1.f), this->shiftVector);
   }
-  std::cout << myMap._extras.size() << "\n";
 
-  std::vector<std::string> mapInputs = { "position" , "incolor" };
-  GlLayer mapLayer( vertexSourceID , fragmentSourceID , mapInputs );
-  mapLayer.BindVB(verticesT,0);
-  mapLayer.BindVB(colorIDs,1);
-  mapLayer.BindIB(indicesT);
-  glDrawElements(GL_TRIANGLES,indicesT.size()*sizeof(glm::vec2),GL_UNSIGNED_INT,NULL);
-  mapLayer.RotateView( "view" , rots , trans);
-
-  GlLayer mapTileLayer( vertexSource , fragmentSource , std::vector<std::string>(1,"position") );
-  mapTileLayer.BindVB(verticesT);
-  mapTileLayer.BindIB(indicesT);
-  glDrawElements(GL_TRIANGLES,indicesT.size()*sizeof(glm::vec2),GL_UNSIGNED_INT,NULL);
-  mapTileLayer.RotateView( "view" , rots , trans);
-
-  GlLayer mapWallLayer( vertexSource , fragmentSource , std::vector<std::string>(1,"position") );
-  mapWallLayer.BindVB(verticesT);
-  mapWallLayer.BindIB(indicesW);
-  glDrawElements(GL_TRIANGLES,indicesW.size()*sizeof(glm::vec2),GL_UNSIGNED_INT,NULL);
-  mapWallLayer.RotateView( "view" , rots , trans);
-
-  GlLayer gridLayer( vertexSource , fragmentSource , std::vector<std::string>(1,"position") );
-  gridLayer.BindVB(verticesL);
-  gridLayer.BindIB(indicesL);
-  glDrawElements(GL_LINES,indicesL.size()*sizeof(glm::vec2),GL_UNSIGNED_INT,NULL);
-  gridLayer.RotateView( "view" , rots , trans);
-
-  int pos[3] = {3,3,0};
-  std::vector<glm::vec3> posVerts(12);
-
-  GlLayer actorLayer( vertexSource , fragmentSource , std::vector<std::string>(1,"position") );
-  actorLayer.BindVB(posVerts);
-  glBufferData(GL_ARRAY_BUFFER, posVerts.size()*sizeof(glm::vec3),glm::value_ptr(posVerts[0]), GL_STATIC_DRAW);
-  glDrawArrays(GL_TRIANGLES,0,3);
-  actorLayer.RotateView( "view" , rots , trans);
-
-  // Update the window
-  SwapWindows();
-
-  // Create a buffer for knowing which tiles get clicked on
-  GLuint coordinateBuffer;
-  glGenFramebuffers(1,&coordinateBuffer);
-  unsigned int rbo[2];
-  glGenRenderbuffers(2, rbo);
-  glBindFramebuffer(GL_FRAMEBUFFER,coordinateBuffer);
-  glBindRenderbuffer(GL_RENDERBUFFER, rbo[0]);
-  glRenderbufferStorage(GL_RENDERBUFFER, GL_RGB8, DISP_WIDTH, DISP_HEIGHT);
-  glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, rbo[0]);
-  glBindRenderbuffer(GL_RENDERBUFFER, rbo[1]);
-  glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT16, DISP_WIDTH, DISP_HEIGHT);
-  glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, rbo[1]);
-  if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-    std::cout << "Failed to bind tile coordinate buffer\n";
+  void Zoom( const float &z ) {
+    this->magnification += z;
+    if ( this->magnification < 0. ) this->magnification = 0.;
+    if ( this->magnification > 3. ) this->magnification = 3.;
+    this->zoomLevel = glm::scale(glm::mat4(1.f),glm::vec3(this->magnification,this->magnification,this->magnification));
   }
-  glBindFramebuffer(GL_FRAMEBUFFER,0);
 
-  // Textures
-  GLuint tex;
-  glGenTextures(1,&tex);
-  glBindTexture(GL_TEXTURE_2D,tex);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-  glGenerateMipmap(GL_TEXTURE_2D);
+  void SpinMap( const float &deg ) {
+    this->rots[ROTATE_Z].degrees += deg;
+    if ( this->rots[ROTATE_Z].degrees < 0.)   this->rots[ROTATE_Z].degrees += 360.;
+    if ( this->rots[ROTATE_Z].degrees > 360.) this->rots[ROTATE_Z].degrees -= 360.;
+  }
 
-  float pixels[] = {
-      0.0f, 0.0f, 0.0f,   1.0f, 1.0f, 1.0f,
-      1.0f, 1.0f, 1.0f,   0.0f, 0.0f, 0.0f
-  };
-  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 2, 2, 0, GL_RGB, GL_FLOAT, pixels);
+  void TiltMap( const float &deg ) {
+    this->rots[ROTATE_X].degrees += deg;
+    if ( this->rots[ROTATE_X].degrees < -90.) this->rots[ROTATE_X].degrees = -90.;
+    if ( this->rots[ROTATE_X].degrees >   0.) this->rots[ROTATE_X].degrees = 0.;
+  }
 
-
-  // Wait for the user to quit
-  bool quit = false;
-  bool leftButtonDown = false;
-  int xLast, yLast;
-  int xRightClick, yRightClick;
-  while (!quit) {
-    //uint32_t frameStart = SDL_GetTicks();
-    SDL_Event event;
-    if (SDL_PollEvent(&event) != 0) {
-      if (event.type == SDL_QUIT) {
-        // User wants to quit
-        quit = true;
+  void HandleInputEvent( const SDL_Event &e , const Map &map) {
+      if (e.type == SDL_QUIT) {
+        this->quit = true;
       }
-      else if ( event.type == SDL_KEYDOWN ) {
-        switch (event.key.keysym.sym)
+      else if ( e.type == SDL_KEYDOWN ) {
+        switch (e.key.keysym.sym)
         {
           case SDLK_a:
-            rots[ROTATE_Z].degrees -= 15.;
+            SpinMap( -15. );
             break;
           case SDLK_d:
-            rots[ROTATE_Z].degrees += 15.;
+            SpinMap( +15. );
             break;
           case SDLK_s:
-            rots[ROTATE_X].degrees -= 5.;
+            TiltMap( -5. );
             break;
           case SDLK_w:
-            rots[ROTATE_X].degrees += 5.;
+            TiltMap( +5. );
             break;
           case SDLK_UP:
-            pos[0] += 1;
+            ShiftMap( +0.05f , 0 );
             break;
           case SDLK_DOWN:
-            pos[0] -= 1;
+            ShiftMap( -0.05f , 0 );
             break;
           case SDLK_LEFT:
-            pos[1] += 1;
+            ShiftMap( -0.05f , 90 );
             break;
           case SDLK_RIGHT:
-            pos[1] -= 1;
+            ShiftMap( +0.05f , 90 );
+            break;
+          case SDLK_y:
+            Zoom(+0.05f);
+            break;
+          case SDLK_t:
+            Zoom(-0.05f);
             break;
           case SDLK_q:
-            quit = true;
+            this->quit = true;
             break;
           default:
             break;
         }
       }
-      else if ( uint8_t(event.type) == uint8_t(SDL_MOUSEBUTTONDOWN) ) {
-        switch(event.button.button)
+      else if ( uint8_t(e.type) == uint8_t(SDL_MOUSEBUTTONDOWN) ) {
+        switch(e.button.button)
         {
           case SDL_BUTTON_LEFT:
-            SDL_GetMouseState(&xLast,&yLast);
-            leftButtonDown = true;
+            SDL_GetMouseState(&this->xLast,&this->yLast);
+            this->leftButtonDown = true;
             break;
           case SDL_BUTTON_RIGHT:
             {
-              SDL_GetMouseState(&xRightClick,&yRightClick);
-              glBindFramebuffer(GL_FRAMEBUFFER,coordinateBuffer);
-              GLubyte data[4];
-              glReadPixels(xRightClick,DISP_HEIGHT-yRightClick,1,1,GL_RGBA,GL_UNSIGNED_BYTE,data);
-              glBindFramebuffer(GL_FRAMEBUFFER, 0);
-              printf("%d , %d , %d\n", data[0] , data[1] , data[2]);
-              int x = ColorToCoord(data[0],myMap._xdim);
-              int y = ColorToCoord(data[1],myMap._ydim);
-              int e = ColorToCoord(data[2],myMap._extras.size())-1;
-              printf("%d , %d , %d\n", x , y , e );
-              if ( x >= 0 && x < myMap._xdim && y >= 0 && y < myMap._ydim ) {
-                pos[0] = x;
-                pos[1] = y;
-                if ( e > -1 ) pos[2] = myMap._extras[e].height;
-                else          pos[2] = myMap.h(x,y);
-              }
+              GetTileCoords( coordinateBuffer, map , tet1.pos );
               break;
             }
           case SDL_BUTTON_MIDDLE:
@@ -631,16 +601,16 @@ int SDL_main(int argc, char **argv) {
             break;
         }
       }
-      else if ( event.type == SDL_MOUSEBUTTONUP ) {
-        switch(event.button.button)
+      else if ( e.type == SDL_MOUSEBUTTONUP ) {
+        switch(e.button.button)
         {
           case SDL_BUTTON_LEFT:
-            SDL_GetMouseState(&xLast,&yLast);
-            leftButtonDown = false;
+            //SDL_GetMouseState(&this->xLast,&this->yLast);
+            this->leftButtonDown = false;
             break;
-          case SDL_BUTTON_RIGHT:
-            std::cout << "right click\n";
-            break;
+            //case SDL_BUTTON_RIGHT:
+            //  std::cout << "right click\n";
+            //  break;
           case SDL_BUTTON_MIDDLE:
             std::cout << "mid click\n";
             break;
@@ -652,87 +622,249 @@ int SDL_main(int argc, char **argv) {
             break;
         }
       }
-    }
-    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-    if ( leftButtonDown ) {
-      int xNow, yNow;
-      uint32_t buttons = SDL_GetMouseState(&xNow,&yNow);
-      rots[ROTATE_Z].degrees += float(xNow - xLast)/2.;
-      rots[ROTATE_X].degrees += float(yNow - yLast)/10.;
-      if ( buttons & (SDL_BUTTON_LMASK == 0) ) {
-        leftButtonDown = false;
+      else if ( e.type == SDL_MOUSEWHEEL ) {
+        if (e.wheel.y > 0 || e.mgesture.dDist > 0 ) {
+          Zoom(+0.05f);
+        }
+        else if (e.wheel.y < 0 ) {
+          Zoom(-0.05f);
+        }
       }
-      xLast = xNow;
-      yLast = yNow;
+      else if ( e.type == SDL_MULTIGESTURE ) {
+        if ( e.mgesture.dDist > 0 ) {
+          Zoom( e.mgesture.dDist/500. );
+        }
+        else if ( e.mgesture.dDist < 0 ) {
+          Zoom( e.mgesture.dDist/500. );
+        }
+      }
     }
 
-    glBindFramebuffer(GL_FRAMEBUFFER,coordinateBuffer);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    mapLayer.UseThisLayer();
-    glDrawElements(GL_TRIANGLES,indicesT.size()*sizeof(glm::vec2),GL_UNSIGNED_INT,NULL);
-    mapLayer.RotateView( "view" , rots , trans);
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-    mapTileLayer.UseThisLayer();
-    glUniform3f(mapTileLayer.color, 1.0f, 0.0f, 1.0f);
-    glDrawElements(GL_TRIANGLES,indicesT.size()*sizeof(glm::vec2),GL_UNSIGNED_INT,NULL);
-    mapTileLayer.RotateView( "view" , rots , trans);
-
-    mapWallLayer.UseThisLayer();
-    glUniform3f(mapWallLayer.color, 0.8f, 0.0f, 0.8f);
-    glDrawElements(GL_TRIANGLES,indicesW.size()*sizeof(glm::vec2),GL_UNSIGNED_INT,NULL);
-    mapWallLayer.RotateView( "view" , rots , trans);
-
-    gridLayer.UseThisLayer();
-    glUniform3f(gridLayer.color, 1.0f, 1.0f, 1.0f);
-    glDrawElements(GL_LINES,indicesL.size()*sizeof(glm::vec2),GL_UNSIGNED_INT,NULL);
-    gridLayer.RotateView( "view" , rots , trans);
-
-    float x1 = CoordToValue( pos[0]   , myMap._xdim );
-    float x2 = CoordToValue( pos[0]+1 , myMap._xdim );
-    float y1 = CoordToValue( pos[1]   , myMap._xdim );
-    float y2 = CoordToValue( pos[1]+1 , myMap._xdim );
-    float z1 = pos[2];
-    float x15 = ( x1 + x2 ) / 2.;
-    float y15 = ( y1 + y2 ) / 2.;
-    posVerts[0] = glm::vec3( x15 , y15 , HeightToValue( z1    ) );
-    posVerts[1] = glm::vec3( x1  , y2  , HeightToValue( z1+10 ) );
-    posVerts[2] = glm::vec3( x2  , y2  , HeightToValue( z1+10 ) );
-    posVerts[3] = glm::vec3( x15 , y15 , HeightToValue( z1    ) );
-    posVerts[4] = glm::vec3( x1  , y2  , HeightToValue( z1+10 ) );
-    posVerts[5] = glm::vec3( x1  , y1  , HeightToValue( z1+10 ) );
-    posVerts[6] = glm::vec3( x15 , y15 , HeightToValue( z1    ) );
-    posVerts[7] = glm::vec3( x2  , y2  , HeightToValue( z1+10 ) );
-    posVerts[8] = glm::vec3( x1  , y1  , HeightToValue( z1+10 ) );
-    posVerts[6] = glm::vec3( x1  , y2  , HeightToValue( z1+10 ) );
-    posVerts[7] = glm::vec3( x2  , y2  , HeightToValue( z1+10 ) );
-    posVerts[8] = glm::vec3( x1  , y1  , HeightToValue( z1+10 ) );
-    glBufferData(GL_ARRAY_BUFFER, posVerts.size()*sizeof(glm::vec3),glm::value_ptr(posVerts[0]), GL_STATIC_DRAW);
-
-    actorLayer.UseThisLayer();
-    glUniform3f(gridLayer.color, 0.5f, 0.5f, 0.5f);
-    glDrawArrays(GL_TRIANGLES,0,9);
-    actorLayer.RotateView( "view" , rots , trans );
-
-    SwapWindows();
-
-    //uint32_t frameEnd = SDL_GetTicks();
-    //uint32_t framesUsed = frameEnd - frameStart;
-    //printf("%d ms\n", framesUsed);
-
-    //int cnt = 0;
-    //if ( framesUsed < TARGET_FRAME_TIME ) {
-    //  //printf(".");
-    //  SDL_Delay(TARGET_FRAME_TIME - framesUsed);
-    //}
-    //if ( cnt > 20 ) printf("\n");
-    //cnt = 0;
+void SetReachable( const Map &mp , Map &buffer , const int &x , const int &y , const int &range , const int &e = -1 ) {
+  for ( int i = 0 ; i < mp._ydim * mp._xdim ; ++i ) {
+    buffer._tiles[i].height = 0;
   }
-  return EXIT_SUCCESS;
+  for ( size_t i = 0 ; i < mp._extras.size() ; ++i ) {
+    buffer._extras[i].height = 0;
+  }
+
+  if ( e < 0 ) buffer.h(x,y) = range+1;
+  else         buffer._extras[e].height = range+1;
+  bool todo = true;
+  while ( todo ) {
+    todo = false;
+    for ( int i = 0 ; i < mp._ydim ; ++i ) {
+      for ( int j = 0 ; j < mp._xdim ; ++j ) {
+        if ( buffer.h(j,i) ) {
+          int less = buffer.h(j,i) - 1;
+          if ( buffer.InBounds(j+1,i+0) ) if ( buffer.h(j+1,i+0) < less ) { buffer.h(j+1,i+0) = less; todo = true; }
+          if ( buffer.InBounds(j-1,i+0) ) if ( buffer.h(j-1,i+0) < less ) { buffer.h(j-1,i+0) = less; todo = true; }
+          if ( buffer.InBounds(j-0,i+1) ) if ( buffer.h(j-0,i+1) < less ) { buffer.h(j-0,i+1) = less; todo = true; }
+          if ( buffer.InBounds(j+0,i-1) ) if ( buffer.h(j+0,i-1) < less ) { buffer.h(j+0,i-1) = less; todo = true; }
+        }
+      }
+    }
+    for ( size_t i = 0 ; i < mp._extras.size() ; ++i ) {
+      if ( !buffer._extras[i].height ) {
+        for ( size_t j = 0 ; j < mp._extras[i].connections.size() ; ++j ) {
+          Coord2D k = mp._extras[i].connections[j];
+          if ( buffer.h(k.x,k.y) > 1 ) { buffer._extras[i].height = buffer.h(k.x,k.y)-1 ; todo = true; }
+        }
+      }
+      else {
+        int less = buffer._extras[i].height - 1;
+        for ( size_t j = 0 ; j < mp._extras[i].extra_connections.size() ; ++j ) {
+          int k = mp._extras[i].extra_connections[j];
+          if ( buffer._extras[k].height < less ) { buffer._extras[k].height = less; todo = true; }
+        }
+        for ( size_t j = 0 ; j < mp._extras[i].connections.size() ; ++j ) {
+          Coord2D k = mp._extras[i].connections[j];
+          if ( buffer.h(k.x,k.y) < less ) { buffer.h(k.x,k.y) = less ; todo = true; }
+        }
+      }
+    }
+  }
 }
 
+  void FillReachableVertsInds( const Map &mp , const Map &info , std::vector<glm::vec3> &verts , std::vector<GLuint> &inds ) {
+    for ( int i = 0 ; i < mp._ydim ; ++i ) {
+      for ( int j = 0 ; j < mp._xdim ; ++j ) {
+        if ( info.h(j,i) ) {
+          AddSquareTile( verts , j , mp._xdim , i , mp._ydim , float(mp.h(j,i))+0.02 );
+        }
+      }
+    }
+    for ( size_t i = 0 ; i < mp._extras.size() ; ++i ) {
+      if ( info._extras[i].height ) {
+        int xx = mp._extras[i].x;
+        int yy = mp._extras[i].y;
+        int hh = mp._extras[i].height;
+        AddSquareTile( verts , xx , mp._xdim , yy , mp._ydim , float(hh)+0.02 );
+      }
+    }
+    GenerateIndicesTriangles( inds , verts.size() );
+  }
+
+  int MainLoop(int argc, char **argv) {
+    //this->myMap = ReadMapFile("session/default/maps/example.map");
+    this->myMap = GenerateMap(7,7,std::vector<VerticalityFeatures>(1,MOUNTAIN));
+    FillVertsAndInds( this->verticesGridLines, this->indicesGridLines , this->myMap , GL_LINES );
+    FillVertsAndInds( this->verticesTileTriangles , this->indicesTriangles , this->myMap , GL_TRIANGLES );
+    FillWallIndices( this->indicesTileWalls , this->myMap );
+    FillColorIDs( this->myMap );
+    verticesTileTrianglesUp.resize(verticesTileTriangles.size());
+    for ( size_t i = 0 ; i < verticesTileTriangles.size() ; ++i ) {
+      this->verticesTileTrianglesUp[i] = glm::vec3(0,0,0.01) + this->verticesTileTriangles[i];
+    }
+
+    // Create a buffer for knowing which tiles get clicked on
+    CreateTileRenderBuffer();
+
+    // Colored tile IDs for clicking on tiles
+    GlLayer mapIdLayer( vertexSourceID , fragmentSourceID );
+    mapIdLayer.AddInput( "position" , 3 );
+    mapIdLayer.AddInput( "incolor" , 3 );
+    mapIdLayer.AddUniform( "zoom" );
+    mapIdLayer.AddUniform( "shift" );
+    mapIdLayer.ZoomView( "zoom" , glm::mat4(1.) );
+    mapIdLayer.ShiftView( "shift" , glm::mat4(1.) );
+    mapIdLayer.BindCopyVB(this->verticesTileTriangles,3,0);
+    mapIdLayer.BindCopyVB(this->colorIDs,3,1);
+    mapIdLayer.BindCopyIB(this->indicesTriangles);
+
+    // Flat parts of the tiles
+    GlLayer mapTileLayer( vertexSourceTexture , fragmentSourceTexture );
+    mapTileLayer.AddInput( "position" , 3 );
+    mapTileLayer.AddUniform( "incolor" );
+    mapTileLayer.AddUniform( "zoom" );
+    mapTileLayer.AddUniform( "shift" );
+    mapTileLayer.ZoomView( "zoom" , glm::mat4(1.) );
+    mapTileLayer.ShiftView( "shift" , glm::mat4(1.) );
+    mapTileLayer.BindCopyVB(this->verticesTileTriangles,3);
+    mapTileLayer.BindCopyIB(this->indicesTriangles);
+
+   // Flat parts of the tiles
+    GlLayer mapTileOverlay( vertexSource , fragmentSource );
+    mapTileOverlay.AddInput( "position" , 3 );
+    mapTileOverlay.AddUniform( "incolor" );
+    mapTileOverlay.AddUniform( "zoom" );
+    mapTileOverlay.AddUniform( "shift" );
+    mapTileOverlay.ZoomView( "zoom" , glm::mat4(1.) );
+    mapTileOverlay.ShiftView( "shift" , glm::mat4(1.) );
+    mapTileOverlay.BindCopyVB(this->verticesTileTrianglesUp,3);
+    mapTileOverlay.BindCopyIB(this->indicesTriangles);
+
+    // Walls connecting adjacent tiles on different z-levels
+    GlLayer mapWallLayer( vertexSource , fragmentSource );
+    mapWallLayer.AddInput( "position" , 3 );
+    mapWallLayer.AddUniform( "incolor" );
+    mapWallLayer.AddUniform( "zoom" );
+    mapWallLayer.AddUniform( "shift" );
+    mapWallLayer.ZoomView( "zoom" , glm::mat4(1.) );
+    mapWallLayer.ShiftView( "shift" , glm::mat4(1.) );
+    mapWallLayer.BindCopyVB(this->verticesTileTriangles,3);
+    mapWallLayer.BindCopyIB(this->indicesTileWalls);
+
+    // Grid lines
+    GlLayer gridLayer( vertexSource , fragmentSource );
+    gridLayer.AddInput( "position" , 3 );
+    gridLayer.AddUniform( "incolor" );
+    gridLayer.AddUniform( "zoom" );
+    gridLayer.AddUniform( "shift" );
+    gridLayer.ZoomView( "zoom" , glm::mat4(1.) );
+    gridLayer.ShiftView( "shift" , glm::mat4(1.) );
+    gridLayer.BindCopyVB(this->verticesGridLines,3);
+    gridLayer.BindCopyIB(this->indicesGridLines);
+
+    // Example actor that moves around
+    tet1.UpdatePos(3,3,this->myMap.h(3,3),-1);
+    tet1.InitializeVerts(this->myMap);
+    GlLayer actorLayer( vertexSource , fragmentSource );
+    actorLayer.AddInput( "position" , 3 );
+    actorLayer.AddUniform( "incolor" );
+    actorLayer.AddUniform( "zoom" );
+    actorLayer.AddUniform( "shift" );
+    actorLayer.ZoomView( "zoom" , glm::mat4(1.) );
+    actorLayer.ShiftView( "shift" , glm::mat4(1.) );
+    actorLayer.BindCopyVB(tet1.posVerts,3);
+
+    // Textures
+    mapTileLayer.UseThisLayer();
+    for ( size_t i = 0 ; i < this->myMap._ydim * this->myMap._xdim + this->myMap._extras.size() ; ++i ) {
+      AddSquareTileTextureCoords( verticesTexture );
+    }
+    mapTileLayer.AddInput( "texCoord" , 2 );
+    mapTileLayer.BindCopyVB(this->verticesTexture,2,1);
+
+    mapTileLayer.AddTexture("applyTexture","texCoord","assets/tiles/rock01.jpg");
+
+    this->bufferMap = this->myMap;
+
+    // Wait for the user to quit
+    while (!this->quit) {
+      //uint32_t frameStart = SDL_GetTicks();
+
+      SDL_Event event;
+      while (SDL_PollEvent(&event) > 0) {
+        HandleInputEvent( event , this->myMap );
+      }
+      if ( this->leftButtonDown ) {
+        int xNow, yNow;
+        uint32_t buttons = SDL_GetMouseState(&xNow,&yNow);
+        this->rots[ROTATE_Z].degrees += float(xNow - this->xLast)/2.;
+        this->rots[ROTATE_X].degrees += float(yNow - this->yLast)/10.;
+        if ( this->rots[ROTATE_Z].degrees < 0.)   this->rots[ROTATE_Z].degrees += 360.;
+        if ( this->rots[ROTATE_Z].degrees > 360.) this->rots[ROTATE_Z].degrees -= 360.;
+        if ( buttons & (SDL_BUTTON_LMASK == 0) ) {
+          this->leftButtonDown = false;
+        }
+        this->xLast = xNow;
+        this->yLast = yNow;
+      }
+
+      //DrawFrame();
+      glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+      glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+      UpdateViewTransformation();
+
+      DrawTileIdLayer(mapIdLayer);
+      DrawMapTiles(mapTileLayer);
+      DrawGridLines(gridLayer);
+
+      this->tet1.UpdateLoc(this->myMap,FACTOR,HFACTOR);
+      std::vector<Translation> ashift;
+      ashift.push_back(Translation(1,tet1.location));
+      DrawActor(actorLayer,ashift);
+
+      this->verticesMoveOverlay.clear();
+      this->indicesMoveOverlay.clear();
+      SetReachable( this->myMap , this->bufferMap , this->tet1.pos[0] , this->tet1.pos[1] , 2 , this->tet1.pos[3] );
+      FillReachableVertsInds( this->myMap , this->bufferMap , this->verticesMoveOverlay , this->indicesMoveOverlay );
+      DrawMapOverlay(mapTileOverlay);
+
+      DrawMapWalls(mapWallLayer);
+
+      SwapWindows();
+
+      ////glFinish();
+      ////uint32_t frameEnd = SDL_GetTicks();
+      ////uint32_t framesUsed = frameEnd - frameStart;
+      ////printf("%d ms\n", framesUsed);
+
+      ////int cnt = 0;
+      ////if ( framesUsed < TARGET_FRAME_TIME ) {
+      ////  //printf(".");
+      ////  SDL_Delay(TARGET_FRAME_TIME - framesUsed);
+      ////}
+      ////if ( cnt > 20 ) printf("\n");
+      ////cnt = 0;
+    }
+    return EXIT_SUCCESS;
+
+  }
+};
+
 int main(int argc, char **argv) {
-  return SDL_main(argc,argv);
+  BattleMap main;
+  main.MainLoop(argc,argv);
 }

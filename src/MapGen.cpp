@@ -47,11 +47,16 @@ void SeedFeatureMOUNTAIN( Map &m ) {
   e.x = rand() % w;
   e.y = rand() % l;
   e.height = 0;
+  e.extra_connections.push_back(1);
   m._extras.push_back(e);
-  //e.y += 1;
-  //m._extras.push_back(e);
+  e.y += 1;
+  e.extra_connections.push_back(0);
+  e.extra_connections[0] = 2;
+  m._extras.push_back(e);
   e.x += 1;
-  e.connections.push_back( (Coord2D){e.x,e.y-1} );
+  e.extra_connections.clear();
+  e.extra_connections.push_back(1);
+  e.connections.push_back( (Coord2D){e.x+1,e.y} );
   m._extras.push_back(e);
 }
 
@@ -102,13 +107,4 @@ Map GenerateMap( const int &w , const int &l , const std::vector<VerticalityFeat
 
   return m;
 }
-
-//int main(void) {
-//  std::vector<VerticalityFeatures> f;
-//  //f.push_back(FLAT);
-//  //f.push_back(HILL);
-//  f.push_back(MOUNTAIN);
-//  Map m = GenerateMap(8,8,f);
-//  PrintMapFile(m);
-//}
 
