@@ -38,6 +38,12 @@ class Map {
   Map(const int &x, const int &y);
   uint8_t h(const int&x, const int&y) const;
   uint8_t& h(const int&x, const int&y);
+  int x(const int&e) const;
+  int& x(const int&e);
+  int y(const int&e) const;
+  int& y(const int&e);
+  uint8_t h(const int&e) const;
+  uint8_t& h(const int&e);
   char t(const int&x, const int&y) const;
   char& t(const int&x, const int&y);
   bool InBounds( const int &x , const int &y );

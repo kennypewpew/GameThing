@@ -27,6 +27,27 @@ char Map::t(const int&x, const int&y) const {
 char& Map::t(const int&x, const int&y) {
   return _tiles[x+y*_xdim].type;
 }
+
+int  Map::x(const int&e) const {
+  return _extras[e].x;
+}
+int& Map::x(const int&e) {
+  return _extras[e].x;
+}
+int  Map::y(const int&e) const {
+  return _extras[e].y;
+}
+int& Map::y(const int&e) {
+  return _extras[e].y;
+}
+uint8_t  Map::h(const int&e) const {
+  return _extras[e].height;
+}
+uint8_t& Map::h(const int&e) {
+  return _extras[e].height;
+}
+
+
 bool Map::InBounds( const int &x , const int &y ) {
   return ( x >= 0 && x < _xdim && y >= 0 && y < _ydim );
 }

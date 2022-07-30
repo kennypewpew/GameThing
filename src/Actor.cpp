@@ -4,7 +4,7 @@
 #include <vector>
 #include <glm/vec3.hpp>
 
-float CoordToValue( const int& , const int& );
+float CoordToValue( const float& , const int& );
 float HeightToValue( const float& );
 
   ActorTetrahedron::ActorTetrahedron() {
@@ -23,6 +23,14 @@ float HeightToValue( const float& );
     pos[1] = y;
     pos[2] = z;
     pos[3] = e;
+  }
+
+  int ActorTetrahedron::MoveRange() {
+    return this->moveRange;
+  }
+
+  int ActorTetrahedron::JumpRange() {
+    return this->jumpRange;
   }
 
   void ActorTetrahedron::UpdateLoc( const Map &mp , const float &FACTOR , const float &HFACTOR ) {

@@ -24,13 +24,15 @@
 #include "GlLayer.h"
 #include "Types.h"
 #include "Actor.h"
+#include "Physics.h"
 
 #include "stb_image.h"
 
 const unsigned int DISP_WIDTH = 480;
 const unsigned int DISP_HEIGHT = 960;
+const int HEIGHT_INCREMENT = 4;
 
-const unsigned int TARGET_FPS = 30;
+const unsigned int TARGET_FPS = 1;
 const unsigned int TARGET_FRAME_TIME = 1000 / TARGET_FPS;
 
 const char* vertexSource = R"glsl(
@@ -151,7 +153,7 @@ void GenerateIndicesTriangles( std::vector<GLuint> &indices , int n ) {
 }
 
 float FACTOR = 1.5;
-float CoordToValue(const int &c, const int &max) {
+float CoordToValue(const float &c, const int &max) {
   return FACTOR*float(c)/float(max) - FACTOR/2.;
 }
 
@@ -346,6 +348,7 @@ class BattleMap {
     std::vector<GLuint> indicesGridLines, indicesTriangles, indicesTileWalls;
     std::vector<glm::vec3> colorIDs;
     std::vector<glm::vec2> verticesTexture;
+    std::vector<glm::vec2> verticesTextureWalls;
     GLuint coordinateBuffer;
     ActorTetrahedron tet1;
     bool quit;
@@ -359,7 +362,9 @@ class BattleMap {
     Map myMap, bufferMap;
     std::vector<glm::vec3> verticesMoveOverlay;
     std::vector<GLuint> indicesMoveOverlay;
-
+    std::vector<glm::vec3> verticesTrajectory;
+    std::vector<GLuint> indicesTrajectory;
+    int endTraj[3];
 
   BattleMap() {
 
@@ -437,7 +442,7 @@ class BattleMap {
 
   void DrawMapOverlay(GlLayer &mapTileLayer) {
     mapTileLayer.UseThisLayer();
-    glUniform4f(mapTileLayer.uni[0], 1.0f, 0.0f, 0.0f, 0.5f);
+    glUniform4f(mapTileLayer.uni[0], 0.0f, 0.0f, 1.0f, 0.5f);
     mapTileLayer.SetView( "view" , this->view );
     mapTileLayer.BindCopyVB( this->verticesMoveOverlay , 3 );
     mapTileLayer.BindCopyIB( this->indicesMoveOverlay );
@@ -463,6 +468,17 @@ class BattleMap {
     gridLayer.UseThisLayer();
     glUniform4f(gridLayer.uni[0], 1.0f, 1.0f, 1.0f, 1.f);
     gridLayer.SetView( "view" , this->view );
+    glDrawElements(GL_LINES,this->indicesGridLines.size()*sizeof(glm::vec2),GL_UNSIGNED_INT,NULL);
+    glLineWidth(1.0f);
+  }
+
+  void DrawTrajectory(GlLayer &gridLayer) {
+    glLineWidth(5.0f);
+    gridLayer.UseThisLayer();
+    glUniform4f(gridLayer.uni[0], 0.0f, 1.0f, 0.0f, 1.f);
+    gridLayer.SetView( "view" , this->view );
+    gridLayer.BindCopyVB( this->verticesTrajectory , 3 );
+    gridLayer.BindCopyIB( this->indicesTrajectory );
     glDrawElements(GL_LINES,this->indicesGridLines.size()*sizeof(glm::vec2),GL_UNSIGNED_INT,NULL);
     glLineWidth(1.0f);
   }
@@ -585,7 +601,8 @@ class BattleMap {
             break;
           case SDL_BUTTON_RIGHT:
             {
-              GetTileCoords( coordinateBuffer, map , tet1.pos );
+              //GetTileCoords( coordinateBuffer, map , tet1.pos );
+              GetTileCoords( coordinateBuffer, map , this->endTraj );
               break;
             }
           case SDL_BUTTON_MIDDLE:
@@ -640,7 +657,64 @@ class BattleMap {
       }
     }
 
-void SetReachable( const Map &mp , Map &buffer , const int &x , const int &y , const int &range , const int &e = -1 ) {
+bool HeightReachable( const int &z1 , const int &z2 , const int &hmax ) {
+  int diff = z1 - z2;
+  if ( diff > 0 ) {
+    return (abs(diff) <= hmax+HEIGHT_INCREMENT);
+  }
+  else {
+    return (abs(diff) <= hmax);
+  }
+}
+
+bool TileUpdate( const Map &mp , Map &buffer , const int &x1 , const int &y1 , const int &x2 , const int &y2 , const int &maxDiff , const int &e1 = -1,  const int &e2 = -1 ) {
+  Coord3D c1,c2;
+  int b1,b2;
+  if ( e1 < 0 ) {
+    c1.x = x1; c1.y = y1; c1.z = mp.h(x1,y1);
+    b1 = buffer.h(x1,y1);
+  }
+  else {
+    c1.x = mp.x(e1);
+    c1.y = mp.y(e1);
+    c1.z = mp.h(e1);
+    b1 = buffer.h(e1);
+  }
+
+  if ( e2 < 0 ) {
+    c2.x = x2; c2.y = y2; c2.z = mp.h(x2,y2);
+    b2 = buffer.h(x2,y2);
+  }
+  else {
+    c2.x = mp.x(e2);
+    c2.y = mp.y(e2);
+    c2.z = mp.h(e2);
+    b2 = buffer.h(e2);
+  }
+
+  if ( e2 < 0 ) if ( !buffer.InBounds( c2.x , c2.y) ) return false;
+  int less = b1 - 1;
+  if ( b2 >= less  ) return false;
+  if ( !HeightReachable( c1.z , c2.z , maxDiff ) ) return false;
+
+  if ( e2 < 0 ) buffer.h(x2,y2) = less;
+  else buffer._extras[e2].height = less;
+
+  return true;
+}
+
+bool SetTileReachability( const Map &mp , Map &buffer , const int &j , const int &i , const int &maxDiff ) {
+  bool todo = false;
+  if ( buffer.h(j,i) ) {
+    if ( TileUpdate(mp,buffer,j,i,j+1,i+0,maxDiff) ) todo = true;
+    if ( TileUpdate(mp,buffer,j,i,j-1,i+0,maxDiff) ) todo = true;
+    if ( TileUpdate(mp,buffer,j,i,j-0,i+1,maxDiff) ) todo = true;
+    if ( TileUpdate(mp,buffer,j,i,j+0,i-1,maxDiff) ) todo = true;
+  }
+  return todo;
+}
+
+void SetReachable( const Map &mp , Map &buffer , const int &x , const int &y , const int &range , const int& maxDiff , const int &e = -1 ) {
   for ( int i = 0 ; i < mp._ydim * mp._xdim ; ++i ) {
     buffer._tiles[i].height = 0;
   }
@@ -656,30 +730,28 @@ void SetReachable( const Map &mp , Map &buffer , const int &x , const int &y , c
     for ( int i = 0 ; i < mp._ydim ; ++i ) {
       for ( int j = 0 ; j < mp._xdim ; ++j ) {
         if ( buffer.h(j,i) ) {
-          int less = buffer.h(j,i) - 1;
-          if ( buffer.InBounds(j+1,i+0) ) if ( buffer.h(j+1,i+0) < less ) { buffer.h(j+1,i+0) = less; todo = true; }
-          if ( buffer.InBounds(j-1,i+0) ) if ( buffer.h(j-1,i+0) < less ) { buffer.h(j-1,i+0) = less; todo = true; }
-          if ( buffer.InBounds(j-0,i+1) ) if ( buffer.h(j-0,i+1) < less ) { buffer.h(j-0,i+1) = less; todo = true; }
-          if ( buffer.InBounds(j+0,i-1) ) if ( buffer.h(j+0,i-1) < less ) { buffer.h(j+0,i-1) = less; todo = true; }
+          todo |= SetTileReachability(mp,buffer,j,i,maxDiff);
         }
       }
     }
     for ( size_t i = 0 ; i < mp._extras.size() ; ++i ) {
-      if ( !buffer._extras[i].height ) {
+      if ( !buffer.h(i) ) {
         for ( size_t j = 0 ; j < mp._extras[i].connections.size() ; ++j ) {
           Coord2D k = mp._extras[i].connections[j];
-          if ( buffer.h(k.x,k.y) > 1 ) { buffer._extras[i].height = buffer.h(k.x,k.y)-1 ; todo = true; }
+          bool r = HeightReachable( mp.h(k.x,k.y) , mp.h(i) , maxDiff );
+          if ( buffer.h(k.x,k.y) )
+            todo |= TileUpdate( mp , buffer , k.x , k.y , mp.x(i) , mp.y(i) , maxDiff , -1, i );
         }
       }
       else {
         int less = buffer._extras[i].height - 1;
         for ( size_t j = 0 ; j < mp._extras[i].extra_connections.size() ; ++j ) {
           int k = mp._extras[i].extra_connections[j];
-          if ( buffer._extras[k].height < less ) { buffer._extras[k].height = less; todo = true; }
+          todo |= TileUpdate( mp , buffer , mp.x(i) , mp.y(i) , mp.x(k) , mp.y(k) , maxDiff , i, k );
         }
         for ( size_t j = 0 ; j < mp._extras[i].connections.size() ; ++j ) {
           Coord2D k = mp._extras[i].connections[j];
-          if ( buffer.h(k.x,k.y) < less ) { buffer.h(k.x,k.y) = less ; todo = true; }
+          todo |= TileUpdate( mp , buffer , mp.x(i) , mp.y(i) , k.x , k.y , maxDiff , i, -i );
         }
       }
     }
@@ -705,9 +777,37 @@ void SetReachable( const Map &mp , Map &buffer , const int &x , const int &y , c
     GenerateIndicesTriangles( inds , verts.size() );
   }
 
+  void UpdateTrajectory( int *startPos , int *endPos , const float &vel ) {
+      this->verticesTrajectory.clear();
+      this->indicesTrajectory.clear();
+
+      float dist = CoordsToDistance( startPos[0] , startPos[1] , endPos[0] , endPos[1] );
+      float angle = MaxAngleToReach( dist , startPos[2] - endPos[2] , vel );
+      if ( glm::isnan(angle) ) return;
+//std::cout << angle << "\n";
+
+      glm::vec3 posTraj = glm::vec3(CoordToValue(startPos[0]+0.5,myMap._xdim),CoordToValue(startPos[1]+0.5,myMap._ydim),HeightToValue(startPos[2]+5));
+      verticesTrajectory.push_back(glm::vec3(posTraj));
+      int steps = 10;
+      float xdiff = (CoordToValue(endPos[0] , this->myMap._xdim ) - CoordToValue(startPos[0] , this->myMap._xdim)) / float(steps);
+      float ydiff = (CoordToValue(endPos[1] , this->myMap._xdim ) - CoordToValue(startPos[1] , this->myMap._ydim)) / float(steps);
+      float rdiff = dist / float(steps);
+      glm::vec3 flatDisplacement = glm::vec3( xdiff , ydiff , 0 );
+      for ( int i = 0 ; i < steps ; ++i ) {
+        posTraj += flatDisplacement;
+        float y = HeightToValue( HeightAtDistance( float(i+1)*rdiff , vel , angle , startPos[2]+5 ) );
+        posTraj.z = y;
+        this->verticesTrajectory.push_back(posTraj);
+        this->indicesTrajectory.push_back(i);
+        this->indicesTrajectory.push_back(i+1);
+      }
+  }
+
   int MainLoop(int argc, char **argv) {
     //this->myMap = ReadMapFile("session/default/maps/example.map");
-    this->myMap = GenerateMap(7,7,std::vector<VerticalityFeatures>(1,MOUNTAIN));
+    //this->myMap = GenerateMap(7,7,std::vector<VerticalityFeatures>(1,MOUNTAIN));
+    this->myMap = GenerateMap(7,7,std::vector<VerticalityFeatures>(1,FLAT));
+    this->myMap.h(5,5) = 20;
     FillVertsAndInds( this->verticesGridLines, this->indicesGridLines , this->myMap , GL_LINES );
     FillVertsAndInds( this->verticesTileTriangles , this->indicesTriangles , this->myMap , GL_TRIANGLES );
     FillWallIndices( this->indicesTileWalls , this->myMap );
@@ -716,6 +816,8 @@ void SetReachable( const Map &mp , Map &buffer , const int &x , const int &y , c
     for ( size_t i = 0 ; i < verticesTileTriangles.size() ; ++i ) {
       this->verticesTileTrianglesUp[i] = glm::vec3(0,0,0.01) + this->verticesTileTriangles[i];
     }
+
+    PrintMap(this->myMap);
 
     // Create a buffer for knowing which tiles get clicked on
     CreateTileRenderBuffer();
@@ -743,7 +845,7 @@ void SetReachable( const Map &mp , Map &buffer , const int &x , const int &y , c
     mapTileLayer.BindCopyVB(this->verticesTileTriangles,3);
     mapTileLayer.BindCopyIB(this->indicesTriangles);
 
-   // Flat parts of the tiles
+   // Movement range overlay
     GlLayer mapTileOverlay( vertexSource , fragmentSource );
     mapTileOverlay.AddInput( "position" , 3 );
     mapTileOverlay.AddUniform( "incolor" );
@@ -755,7 +857,7 @@ void SetReachable( const Map &mp , Map &buffer , const int &x , const int &y , c
     mapTileOverlay.BindCopyIB(this->indicesTriangles);
 
     // Walls connecting adjacent tiles on different z-levels
-    GlLayer mapWallLayer( vertexSource , fragmentSource );
+    GlLayer mapWallLayer( vertexSourceTexture , fragmentSourceTexture );
     mapWallLayer.AddInput( "position" , 3 );
     mapWallLayer.AddUniform( "incolor" );
     mapWallLayer.AddUniform( "zoom" );
@@ -788,6 +890,40 @@ void SetReachable( const Map &mp , Map &buffer , const int &x , const int &y , c
     actorLayer.ShiftView( "shift" , glm::mat4(1.) );
     actorLayer.BindCopyVB(tet1.posVerts,3);
 
+    int startPos[3] = { tet1.pos[0] , tet1.pos[1] , tet1.pos[2] };
+    int eX = 0;
+    int eY = 6;
+    this->endTraj[0] = eX;
+    this->endTraj[1] = eY;
+    this->endTraj[2] = myMap.h(eX,eY);
+    float vel = VelocityToReach( 3 );
+
+    //for ( int y = 0 ; y < myMap._ydim ; ++y ) {
+    //  for ( int x = 0 ; x < myMap._xdim ; ++x ) {
+    //  }
+    //}
+    UpdateTrajectory( this->tet1.pos , this->endTraj , vel );
+
+
+    //verticesTrajectory.push_back(glm::vec3(CoordToValue(endPos[0]  +0.5,myMap._xdim),CoordToValue(endPos[1]  +0.5,myMap._ydim),HeightToValue(endPos[2]  +5)));
+
+    //verticesTrajectory.push_back(glm::vec3(CoordToValue(startPos[0]+0.5,myMap._xdim),CoordToValue(startPos[1]+0.5,myMap._ydim),HeightToValue(startPos[2]+5)));
+    //verticesTrajectory.push_back(glm::vec3(CoordToValue(endPos[0]  +0.5,myMap._xdim),CoordToValue(endPos[1]  +0.5,myMap._ydim),HeightToValue(endPos[2]  +5)));
+    //indicesTrajectory.push_back(0);
+    //indicesTrajectory.push_back(1);
+
+    // Sample trajectory
+    GlLayer trajLayer( vertexSource , fragmentSource );
+    trajLayer.AddInput( "position" , 3 );
+    trajLayer.AddUniform( "incolor" );
+    trajLayer.AddUniform( "zoom" );
+    trajLayer.AddUniform( "shift" );
+    trajLayer.ZoomView( "zoom" , glm::mat4(1.) );
+    trajLayer.ShiftView( "shift" , glm::mat4(1.) );
+    trajLayer.BindCopyVB(this->verticesTrajectory,3);
+    trajLayer.BindCopyIB(this->indicesTrajectory);
+
+
     // Textures
     mapTileLayer.UseThisLayer();
     for ( size_t i = 0 ; i < this->myMap._ydim * this->myMap._xdim + this->myMap._extras.size() ; ++i ) {
@@ -795,14 +931,23 @@ void SetReachable( const Map &mp , Map &buffer , const int &x , const int &y , c
     }
     mapTileLayer.AddInput( "texCoord" , 2 );
     mapTileLayer.BindCopyVB(this->verticesTexture,2,1);
+    mapTileLayer.AddTexture("applyTexture","texCoord","assets/tiles/clover.jpg");
 
-    mapTileLayer.AddTexture("applyTexture","texCoord","assets/tiles/rock01.jpg");
+    mapWallLayer.UseThisLayer();
+    for ( size_t i = 0 ; i < this->myMap._ydim * this->myMap._xdim + this->myMap._extras.size() ; ++i ) {
+      AddSquareTileTextureCoords( verticesTextureWalls );
+    }
+    mapWallLayer.AddInput( "texCoord" , 2 );
+    mapWallLayer.BindCopyVB(this->verticesTextureWalls,2,1);
+    mapWallLayer.AddTexture("applyTexture","texCoord","assets/tiles/rock02_2.jpg");
+
+
 
     this->bufferMap = this->myMap;
 
     // Wait for the user to quit
     while (!this->quit) {
-      //uint32_t frameStart = SDL_GetTicks();
+      uint32_t frameStart = SDL_GetTicks();
 
       SDL_Event event;
       while (SDL_PollEvent(&event) > 0) {
@@ -831,6 +976,9 @@ void SetReachable( const Map &mp , Map &buffer , const int &x , const int &y , c
       DrawMapTiles(mapTileLayer);
       DrawGridLines(gridLayer);
 
+      UpdateTrajectory( this->tet1.pos , this->endTraj , vel );
+      DrawTrajectory(trajLayer);
+
       this->tet1.UpdateLoc(this->myMap,FACTOR,HFACTOR);
       std::vector<Translation> ashift;
       ashift.push_back(Translation(1,tet1.location));
@@ -838,7 +986,10 @@ void SetReachable( const Map &mp , Map &buffer , const int &x , const int &y , c
 
       this->verticesMoveOverlay.clear();
       this->indicesMoveOverlay.clear();
-      SetReachable( this->myMap , this->bufferMap , this->tet1.pos[0] , this->tet1.pos[1] , 2 , this->tet1.pos[3] );
+      int moveRange = this->tet1.MoveRange();
+      int jumpRange = this->tet1.JumpRange();
+      jumpRange = 3;
+      SetReachable( this->myMap , this->bufferMap , this->tet1.pos[0] , this->tet1.pos[1] , moveRange , jumpRange * HEIGHT_INCREMENT , this->tet1.pos[3] );
       FillReachableVertsInds( this->myMap , this->bufferMap , this->verticesMoveOverlay , this->indicesMoveOverlay );
       DrawMapOverlay(mapTileOverlay);
 
@@ -847,17 +998,12 @@ void SetReachable( const Map &mp , Map &buffer , const int &x , const int &y , c
       SwapWindows();
 
       ////glFinish();
-      ////uint32_t frameEnd = SDL_GetTicks();
-      ////uint32_t framesUsed = frameEnd - frameStart;
-      ////printf("%d ms\n", framesUsed);
+      //uint32_t frameEnd = SDL_GetTicks();
+      //uint32_t framesUsed = frameEnd - frameStart;
 
-      ////int cnt = 0;
-      ////if ( framesUsed < TARGET_FRAME_TIME ) {
-      ////  //printf(".");
-      ////  SDL_Delay(TARGET_FRAME_TIME - framesUsed);
-      ////}
-      ////if ( cnt > 20 ) printf("\n");
-      ////cnt = 0;
+      //if ( framesUsed < TARGET_FRAME_TIME ) {
+      //  SDL_Delay(TARGET_FRAME_TIME - framesUsed);
+      //}
     }
     return EXIT_SUCCESS;
 

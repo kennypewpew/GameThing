@@ -9,7 +9,7 @@ IFLAGS= -I ./include
 CFLAGS= -O2 -g -Wall
 LFLAGS= $(GLFW_LINK_FLAGS) $(GLEW_LINK_FLAGS) $(GL_LINK_FLAGS)
 
-SRC=src/Maps.cpp src/Window.cpp src/MapGen.cpp src/GlLayer.cpp src/Actor.cpp
+SRC=src/Maps.cpp src/Window.cpp src/MapGen.cpp src/GlLayer.cpp src/Actor.cpp src/Physics.cpp
 #SRC=src/Maps.cpp src/Window.cpp src/MapGen.cpp
 OBJ_TMP=$(subst src,obj,$(SRC))
 OBJ=$(subst .cpp,.o,$(OBJ_TMP))

@@ -165,6 +165,7 @@ void shaderCompileCheck(GLint s) {
 
   void GlLayer::UseThisLayer() {
     glBindVertexArrayOES(this->va);
+    for ( size_t i = 0 ; i < tex.size() ; ++i ) glBindTexture(GL_TEXTURE_2D, tex[i] );
     glUseProgram(this->sp);
   }
 
