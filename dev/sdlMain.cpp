@@ -17,6 +17,7 @@
 #include <fstream>
 #include <sstream>
 #include <cmath>
+#include <map>
 
 #include "Maps.h"
 #include "MapGen.h"
@@ -28,103 +29,19 @@
 
 #include "stb_image.h"
 
+#ifdef __ANDROID__
+#include <jni.h>
+#include <android/asset_manager.h>
+#include <android/asset_manager_jni.h>
+//#include "JNIHelper.h"
+#endif
+
 const unsigned int DISP_WIDTH = 480;
 const unsigned int DISP_HEIGHT = 960;
 const int HEIGHT_INCREMENT = 4;
 
 const unsigned int TARGET_FPS = 1;
 const unsigned int TARGET_FRAME_TIME = 1000 / TARGET_FPS;
-
-const char* vertexSource = R"glsl(
-    #version 300 es
-
-    precision mediump float;
-    in mediump vec3 position;
-    uniform mat4 view;
-    uniform mat4 zoom;
-    uniform mat4 shift;
-
-    void main()
-    {
-        gl_Position = zoom * view * shift * vec4(position, 1.0);
-    }
-)glsl";
-
-const char* fragmentSource = R"glsl(
-    #version 300 es
-
-    precision mediump float;
-    out mediump vec4 fragColor;
-    uniform vec4 incolor;
-
-    void main()
-    {
-        fragColor = incolor;
-    }
-)glsl";
-
-const char* vertexSourceTexture = R"glsl(
-    #version 300 es
-
-    precision mediump float;
-    in mediump vec3 position;
-    in mediump vec2 texCoord;
-    out mediump vec2 tCoord;
-    uniform mat4 zoom;
-    uniform mat4 view;
-    uniform mat4 shift;
-
-    void main()
-    {
-        gl_Position = zoom * view * shift * vec4(position, 1.0);
-        tCoord = texCoord;
-    }
-)glsl";
-
-const char* fragmentSourceTexture = R"glsl(
-    #version 300 es
-
-    precision mediump float;
-    in mediump vec2 tCoord;
-    out mediump vec4 fragColor;
-    uniform sampler2D applyTexture;
-
-    void main()
-    {
-        fragColor = texture(applyTexture,tCoord);
-    }
-)glsl";
-
-const char* vertexSourceID = R"glsl(
-    #version 300 es
-
-    precision mediump float;
-    in mediump vec3 position;
-    in mediump vec3 incolor;
-    uniform mat4 view;
-    uniform mat4 zoom;
-    uniform mat4 shift;
-    out mediump vec3 t_color;
-
-    void main()
-    {
-        gl_Position = zoom * view * shift * vec4(position, 1.0);
-        t_color = incolor;
-    }
-)glsl";
-
-const char* fragmentSourceID = R"glsl(
-    #version 300 es
-
-    precision mediump float;
-    out mediump vec4 fragColor;
-    in mediump vec3 t_color;
-
-    void main()
-    {
-        fragColor = vec4(t_color, 1.0);
-    }
-)glsl";
 
 void GenerateIndicesLines( std::vector<GLuint> &indices , int n ) {
   for ( int i = 0 ; i < n ; ++i ) {
@@ -150,16 +67,6 @@ void GenerateIndicesTriangles( std::vector<GLuint> &indices , int n ) {
     AddIndexTriangle(indices, 4*i , 4*i + 1 , 4*i + 2 );
     AddIndexTriangle(indices, 4*i , 4*i + 2 , 4*i + 3 );
   }
-}
-
-float FACTOR = 1.5;
-float CoordToValue(const float &c, const int &max) {
-  return FACTOR*float(c)/float(max) - FACTOR/2.;
-}
-
-float HFACTOR = 100;
-float HeightToValue( const float &h ) {
-  return float(h) / HFACTOR;
 }
 
 // Coordinates are 1-indexed instead of 0-indexed so out of bounds doesn't return (0,0)
@@ -220,11 +127,9 @@ void GetTileCoords( const GLuint &tileBuffer, const Map &map , int *outCoords ) 
   GLubyte data[4];
   glReadPixels(xRightClick,DISP_HEIGHT-yRightClick,1,1,GL_RGBA,GL_UNSIGNED_BYTE,data);
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
-  //printf("%d , %d , %d\n", data[0] , data[1] , data[2]);
   int x = ColorToCoord(data[0],map._xdim);
   int y = ColorToCoord(data[1],map._ydim);
   int e = ColorToCoord(data[2],map._extras.size())-1;
-  //printf("%d , %d , %d\n", x , y , e );
   if ( x >= 0 && x < map._xdim && y >= 0 && y < map._ydim ) {
     outCoords[0] = x;
     outCoords[1] = y;
@@ -339,6 +244,9 @@ void FillWallIndices( std::vector<GLuint> &inds , const Map &mp ) {
   }
 }
 
+class BattleMap;
+bool QuitMap(const SDL_Event &e , BattleMap* mp);
+
 class BattleMap {
  public:
     std::vector<Rotation> rots;
@@ -373,11 +281,11 @@ class BattleMap {
     glEnable(GL_DEPTH_TEST);
 
     this->rots = std::vector<Rotation>(ROTATE_TOTAL);
-    this->rots[ROTATE_X] = Rotation(-65.f,glm::vec3(1.f,0.f,0.f));
+    this->rots[ROTATE_X] = Rotation(-75.f,glm::vec3(1.f,0.f,0.f));
     this->rots[ROTATE_Y] = Rotation(  0.f,glm::vec3(0.f,1.f,0.f));
     this->rots[ROTATE_Z] = Rotation( 45.f,glm::vec3(0.f,0.f,1.f));
 
-    this->zoomLevel = glm::scale(glm::mat4(1.f),glm::vec3(this->magnification,this->magnification,this->magnification));
+    this->zoomLevel = glm::scale(glm::mat4(1.f),glm::vec3(this->magnification,this->magnification,0.1));
 
     this->shiftVector = glm::vec3(0.0f,0.f,0.f);
     this->shiftMatrix = glm::translate(glm::mat4(1.f), this->shiftVector);
@@ -418,11 +326,16 @@ class BattleMap {
     }
     this->view *= this->shiftMatrix;
 
-    ////mapTileLayer.ZoomView( "zoom" , this->zoomLevel );
+    //glm::vec3 camera = glm::vec3(0.,0.1*this->magnification,0.5*this->magnification);
+    //glm::vec3 center = glm::vec3(0.,0.,0.);
+    //glm::vec3 upDir = glm::vec3(0.5,0.5,0.2);
+    //this->view = glm::lookAt(camera,center,upDir);
+
+    ////mapTileLayer.SetUniform( "zoom" , this->zoomLevel );
     //GLint uniTrans = glGetUniformLocation(this->sp, uniformName.c_str());
     //glUniformMatrix4fv(uniTrans, 1, GL_FALSE, glm::value_ptr(zoom));
 
-    ////mapTileLayer.ShiftView( "shift" , this->shiftMatrix );
+    ////mapTileLayer.SetUniform( "shift" , this->shiftMatrix );
     //GLint uniTrans = glGetUniformLocation(this->sp, uniformName.c_str());
     //glUniformMatrix4fv(uniTrans, 1, GL_FALSE, glm::value_ptr(shift));
 
@@ -434,16 +347,16 @@ class BattleMap {
     glBindFramebuffer(GL_FRAMEBUFFER,this->coordinateBuffer);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     mapLayer.UseThisLayer();
-    mapLayer.BindVB(2);
-    mapLayer.SetView( "view" , this->view );
+    mapLayer.SetUniform( "view" , this->view );
     glDrawElements(GL_TRIANGLES,this->indicesTriangles.size()*sizeof(glm::vec2),GL_UNSIGNED_INT,NULL);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
   }
 
   void DrawMapOverlay(GlLayer &mapTileLayer) {
     mapTileLayer.UseThisLayer();
-    glUniform4f(mapTileLayer.uni[0], 0.0f, 0.0f, 1.0f, 0.5f);
-    mapTileLayer.SetView( "view" , this->view );
+    glm::vec4 color(0.0f, 0.0f, 1.0f, 0.5f);
+    mapTileLayer.SetUniform( "incolor" , color );
+    mapTileLayer.SetUniform( "view" , this->view );
     mapTileLayer.BindCopyVB( this->verticesMoveOverlay , 3 );
     mapTileLayer.BindCopyIB( this->indicesMoveOverlay );
     glDrawElements(GL_TRIANGLES,this->indicesMoveOverlay.size()*sizeof(glm::vec2),GL_UNSIGNED_INT,NULL);
@@ -451,23 +364,26 @@ class BattleMap {
 
   void DrawMapTiles(GlLayer &mapTileLayer) {
     mapTileLayer.UseThisLayer();
-    glUniform4f(mapTileLayer.uni[0], 1.0f, 0.0f, 1.0f, 1.f);
-    mapTileLayer.SetView( "view" , this->view );
+    glm::vec4 color(1.0f, 0.0f, 1.0f, 1.f);
+    mapTileLayer.SetUniform( "incolor" , color );
+    mapTileLayer.SetUniform( "view" , this->view );
     glDrawElements(GL_TRIANGLES,this->indicesTriangles.size()*sizeof(glm::vec2),GL_UNSIGNED_INT,NULL);
   }
 
   void DrawMapWalls(GlLayer &mapWallLayer) {
     mapWallLayer.UseThisLayer();
-    glUniform4f(mapWallLayer.uni[0], 0.8f, 0.0f, 0.8f, 0.9f);
-    mapWallLayer.SetView( "view" , this->view );
+    glm::vec4 color(0.8f, 0.0f, 0.8f, 0.9f);
+    mapWallLayer.SetUniform( "incolor" , color );
+    mapWallLayer.SetUniform( "view" , this->view );
     glDrawElements(GL_TRIANGLES,this->indicesTileWalls.size()*sizeof(glm::vec2),GL_UNSIGNED_INT,NULL);
   }
 
   void DrawGridLines(GlLayer &gridLayer) {
     glLineWidth(5.0f);
     gridLayer.UseThisLayer();
-    glUniform4f(gridLayer.uni[0], 1.0f, 1.0f, 1.0f, 1.f);
-    gridLayer.SetView( "view" , this->view );
+    glm::vec4 color(1.0f, 1.0f, 1.0f, 1.f);
+    gridLayer.SetUniform( "incolor" , color );
+    gridLayer.SetUniform( "view" , this->view );
     glDrawElements(GL_LINES,this->indicesGridLines.size()*sizeof(glm::vec2),GL_UNSIGNED_INT,NULL);
     glLineWidth(1.0f);
   }
@@ -475,8 +391,9 @@ class BattleMap {
   void DrawTrajectory(GlLayer &gridLayer) {
     glLineWidth(5.0f);
     gridLayer.UseThisLayer();
-    glUniform4f(gridLayer.uni[0], 0.0f, 1.0f, 0.0f, 1.f);
-    gridLayer.SetView( "view" , this->view );
+    glm::vec4 color(0.0f, 1.0f, 0.0f, 1.f);
+    gridLayer.SetUniform( "incolor" , color );
+    gridLayer.SetUniform( "view" , this->view );
     gridLayer.BindCopyVB( this->verticesTrajectory , 3 );
     gridLayer.BindCopyIB( this->indicesTrajectory );
     glDrawElements(GL_LINES,this->indicesGridLines.size()*sizeof(glm::vec2),GL_UNSIGNED_INT,NULL);
@@ -485,28 +402,15 @@ class BattleMap {
 
   void DrawActor(GlLayer &actorLayer , const std::vector<Translation> &shift) {
     actorLayer.UseThisLayer();
-    glUniform4f(actorLayer.uni[0], 0.5f, 0.5f, 0.5f, 1.f);
+    glm::vec4 color(0.5f, 0.5f, 0.5f, 1.f);
+    actorLayer.SetUniform( "incolor" , color );
     glBufferData(GL_ARRAY_BUFFER, tet1.posVerts.size()*sizeof(glm::vec3),glm::value_ptr(tet1.posVerts[0]), GL_STATIC_DRAW);
     actorLayer.RotateView( "view" , this->rots , shift );
-    actorLayer.ZoomView( "zoom" , this->zoomLevel );
-    actorLayer.ShiftView( "shift" , this->shiftMatrix );
+    actorLayer.SetUniform( "zoom" , this->zoomLevel );
+    actorLayer.SetUniform( "shift" , this->shiftMatrix );
     glDrawArrays(GL_TRIANGLES,0,9);
+    actorLayer.SetUniform( "zoom" , glm::mat4(1.) );
   }
-
-  //void DrawFrame() {
-  //  glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-  //  glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-  //  DrawTileIdLayer(mapLayer);
-  //  DrawMapTiles(mapTileLayer);
-  //  DrawMapWalls(mapWallLayer);
-  //  DrawGridLines(gridLayer);
-
-  //  tet1.UpdateVerts(this->myMap);
-  //  DrawActor(actorLayer);
-
-  //  SwapWindows();
-  //}
 
   void FillColorIDs( const Map &myMap ) {
     for ( int y = 0 ; y < this->myMap._ydim ; ++y ) {
@@ -533,7 +437,7 @@ class BattleMap {
     this->magnification += z;
     if ( this->magnification < 0. ) this->magnification = 0.;
     if ( this->magnification > 3. ) this->magnification = 3.;
-    this->zoomLevel = glm::scale(glm::mat4(1.f),glm::vec3(this->magnification,this->magnification,this->magnification));
+    this->zoomLevel = glm::scale(glm::mat4(1.f),glm::vec3(this->magnification,this->magnification,0.1));
   }
 
   void SpinMap( const float &deg ) {
@@ -548,11 +452,9 @@ class BattleMap {
     if ( this->rots[ROTATE_X].degrees >   0.) this->rots[ROTATE_X].degrees = 0.;
   }
 
-  void HandleInputEvent( const SDL_Event &e , const Map &map) {
-      if (e.type == SDL_QUIT) {
-        this->quit = true;
-      }
-      else if ( e.type == SDL_KEYDOWN ) {
+  void HandleInputEvent( const SDL_Event &e , const Map &map , std::map<Uint32,bool (*)(const SDL_Event&,BattleMap*)> &handlers ) {
+      if ( handlers.count(e.type) ) (handlers[e.type])(e,this);
+      if ( e.type == SDL_KEYDOWN ) {
         switch (e.key.keysym.sym)
         {
           case SDLK_a:
@@ -649,10 +551,10 @@ class BattleMap {
       }
       else if ( e.type == SDL_MULTIGESTURE ) {
         if ( e.mgesture.dDist > 0 ) {
-          Zoom( e.mgesture.dDist/500. );
+          Zoom( e.mgesture.dDist/50. );
         }
         else if ( e.mgesture.dDist < 0 ) {
-          Zoom( e.mgesture.dDist/500. );
+          Zoom( e.mgesture.dDist/50. );
         }
       }
     }
@@ -738,13 +640,13 @@ void SetReachable( const Map &mp , Map &buffer , const int &x , const int &y , c
       if ( !buffer.h(i) ) {
         for ( size_t j = 0 ; j < mp._extras[i].connections.size() ; ++j ) {
           Coord2D k = mp._extras[i].connections[j];
-          bool r = HeightReachable( mp.h(k.x,k.y) , mp.h(i) , maxDiff );
+          //bool r = HeightReachable( mp.h(k.x,k.y) , mp.h(i) , maxDiff );
           if ( buffer.h(k.x,k.y) )
             todo |= TileUpdate( mp , buffer , k.x , k.y , mp.x(i) , mp.y(i) , maxDiff , -1, i );
         }
       }
       else {
-        int less = buffer._extras[i].height - 1;
+        //int less = buffer._extras[i].height - 1;
         for ( size_t j = 0 ; j < mp._extras[i].extra_connections.size() ; ++j ) {
           int k = mp._extras[i].extra_connections[j];
           todo |= TileUpdate( mp , buffer , mp.x(i) , mp.y(i) , mp.x(k) , mp.y(k) , maxDiff , i, k );
@@ -804,9 +706,14 @@ void SetReachable( const Map &mp , Map &buffer , const int &x , const int &y , c
   }
 
   int MainLoop(int argc, char **argv) {
+    Shader shaderInputColor( std::string("shader/inputColor.vs") , std::string("shader/inputColor.fs") );
+    Shader shaderSolidColor( std::string("shader/solidColor.vs") , std::string("shader/solidColor.fs") );
+    Shader shaderTexture( std::string("shader/inputTexture.vs") , std::string("shader/inputTexture.fs") );
+
     //this->myMap = ReadMapFile("session/default/maps/example.map");
+    this->myMap = GenerateMap(11,11,std::vector<VerticalityFeatures>(1,MOUNTAIN));
     //this->myMap = GenerateMap(7,7,std::vector<VerticalityFeatures>(1,MOUNTAIN));
-    this->myMap = GenerateMap(7,7,std::vector<VerticalityFeatures>(1,FLAT));
+    //this->myMap = GenerateMap(7,7,std::vector<VerticalityFeatures>(1,FLAT));
     this->myMap.h(5,5) = 20;
     FillVertsAndInds( this->verticesGridLines, this->indicesGridLines , this->myMap , GL_LINES );
     FillVertsAndInds( this->verticesTileTriangles , this->indicesTriangles , this->myMap , GL_TRIANGLES );
@@ -816,81 +723,63 @@ void SetReachable( const Map &mp , Map &buffer , const int &x , const int &y , c
     for ( size_t i = 0 ; i < verticesTileTriangles.size() ; ++i ) {
       this->verticesTileTrianglesUp[i] = glm::vec3(0,0,0.01) + this->verticesTileTriangles[i];
     }
-
-    PrintMap(this->myMap);
+    //PrintMap(this->myMap);
 
     // Create a buffer for knowing which tiles get clicked on
     CreateTileRenderBuffer();
 
     // Colored tile IDs for clicking on tiles
-    GlLayer mapIdLayer( vertexSourceID , fragmentSourceID );
+    GlLayer mapIdLayer( shaderInputColor );
     mapIdLayer.AddInput( "position" , 3 );
     mapIdLayer.AddInput( "incolor" , 3 );
-    mapIdLayer.AddUniform( "zoom" );
-    mapIdLayer.AddUniform( "shift" );
-    mapIdLayer.ZoomView( "zoom" , glm::mat4(1.) );
-    mapIdLayer.ShiftView( "shift" , glm::mat4(1.) );
+    mapIdLayer.SetUniform( "zoom" , glm::mat4(1.) );
+    mapIdLayer.SetUniform( "shift" , glm::mat4(1.) );
     mapIdLayer.BindCopyVB(this->verticesTileTriangles,3,0);
     mapIdLayer.BindCopyVB(this->colorIDs,3,1);
     mapIdLayer.BindCopyIB(this->indicesTriangles);
 
     // Flat parts of the tiles
-    GlLayer mapTileLayer( vertexSourceTexture , fragmentSourceTexture );
+    GlLayer mapTileLayer( shaderTexture );
     mapTileLayer.AddInput( "position" , 3 );
-    mapTileLayer.AddUniform( "incolor" );
-    mapTileLayer.AddUniform( "zoom" );
-    mapTileLayer.AddUniform( "shift" );
-    mapTileLayer.ZoomView( "zoom" , glm::mat4(1.) );
-    mapTileLayer.ShiftView( "shift" , glm::mat4(1.) );
+    mapTileLayer.SetUniform( "zoom" , glm::mat4(1.) );
+    mapTileLayer.SetUniform( "shift" , glm::mat4(1.) );
     mapTileLayer.BindCopyVB(this->verticesTileTriangles,3);
     mapTileLayer.BindCopyIB(this->indicesTriangles);
 
    // Movement range overlay
-    GlLayer mapTileOverlay( vertexSource , fragmentSource );
+    GlLayer mapTileOverlay( shaderSolidColor );
     mapTileOverlay.AddInput( "position" , 3 );
-    mapTileOverlay.AddUniform( "incolor" );
-    mapTileOverlay.AddUniform( "zoom" );
-    mapTileOverlay.AddUniform( "shift" );
-    mapTileOverlay.ZoomView( "zoom" , glm::mat4(1.) );
-    mapTileOverlay.ShiftView( "shift" , glm::mat4(1.) );
+    mapTileOverlay.SetUniform( "zoom" , glm::mat4(1.) );
+    mapTileOverlay.SetUniform( "shift" , glm::mat4(1.) );
     mapTileOverlay.BindCopyVB(this->verticesTileTrianglesUp,3);
     mapTileOverlay.BindCopyIB(this->indicesTriangles);
 
     // Walls connecting adjacent tiles on different z-levels
-    GlLayer mapWallLayer( vertexSourceTexture , fragmentSourceTexture );
+    GlLayer mapWallLayer( shaderTexture );
     mapWallLayer.AddInput( "position" , 3 );
-    mapWallLayer.AddUniform( "incolor" );
-    mapWallLayer.AddUniform( "zoom" );
-    mapWallLayer.AddUniform( "shift" );
-    mapWallLayer.ZoomView( "zoom" , glm::mat4(1.) );
-    mapWallLayer.ShiftView( "shift" , glm::mat4(1.) );
+    mapWallLayer.SetUniform( "zoom" , glm::mat4(1.) );
+    mapWallLayer.SetUniform( "shift" , glm::mat4(1.) );
     mapWallLayer.BindCopyVB(this->verticesTileTriangles,3);
     mapWallLayer.BindCopyIB(this->indicesTileWalls);
 
     // Grid lines
-    GlLayer gridLayer( vertexSource , fragmentSource );
+    GlLayer gridLayer( shaderSolidColor );
     gridLayer.AddInput( "position" , 3 );
-    gridLayer.AddUniform( "incolor" );
-    gridLayer.AddUniform( "zoom" );
-    gridLayer.AddUniform( "shift" );
-    gridLayer.ZoomView( "zoom" , glm::mat4(1.) );
-    gridLayer.ShiftView( "shift" , glm::mat4(1.) );
+    gridLayer.SetUniform( "zoom" , glm::mat4(1.) );
+    gridLayer.SetUniform( "shift" , glm::mat4(1.) );
     gridLayer.BindCopyVB(this->verticesGridLines,3);
     gridLayer.BindCopyIB(this->indicesGridLines);
 
     // Example actor that moves around
-    tet1.UpdatePos(3,3,this->myMap.h(3,3),-1);
-    tet1.InitializeVerts(this->myMap);
-    GlLayer actorLayer( vertexSource , fragmentSource );
+    this->tet1.UpdatePos(3,3,this->myMap.h(3,3),-1);
+    this->tet1.InitializeVerts(this->myMap);
+    GlLayer actorLayer( shaderSolidColor );
     actorLayer.AddInput( "position" , 3 );
-    actorLayer.AddUniform( "incolor" );
-    actorLayer.AddUniform( "zoom" );
-    actorLayer.AddUniform( "shift" );
-    actorLayer.ZoomView( "zoom" , glm::mat4(1.) );
-    actorLayer.ShiftView( "shift" , glm::mat4(1.) );
+    actorLayer.SetUniform( "zoom" , glm::mat4(1.) );
+    actorLayer.SetUniform( "shift" , glm::mat4(1.) );
     actorLayer.BindCopyVB(tet1.posVerts,3);
 
-    int startPos[3] = { tet1.pos[0] , tet1.pos[1] , tet1.pos[2] };
+    //int startPos[3] = { tet1.pos[0] , tet1.pos[1] , tet1.pos[2] };
     int eX = 0;
     int eY = 6;
     this->endTraj[0] = eX;
@@ -898,28 +787,13 @@ void SetReachable( const Map &mp , Map &buffer , const int &x , const int &y , c
     this->endTraj[2] = myMap.h(eX,eY);
     float vel = VelocityToReach( 3 );
 
-    //for ( int y = 0 ; y < myMap._ydim ; ++y ) {
-    //  for ( int x = 0 ; x < myMap._xdim ; ++x ) {
-    //  }
-    //}
     UpdateTrajectory( this->tet1.pos , this->endTraj , vel );
 
-
-    //verticesTrajectory.push_back(glm::vec3(CoordToValue(endPos[0]  +0.5,myMap._xdim),CoordToValue(endPos[1]  +0.5,myMap._ydim),HeightToValue(endPos[2]  +5)));
-
-    //verticesTrajectory.push_back(glm::vec3(CoordToValue(startPos[0]+0.5,myMap._xdim),CoordToValue(startPos[1]+0.5,myMap._ydim),HeightToValue(startPos[2]+5)));
-    //verticesTrajectory.push_back(glm::vec3(CoordToValue(endPos[0]  +0.5,myMap._xdim),CoordToValue(endPos[1]  +0.5,myMap._ydim),HeightToValue(endPos[2]  +5)));
-    //indicesTrajectory.push_back(0);
-    //indicesTrajectory.push_back(1);
-
     // Sample trajectory
-    GlLayer trajLayer( vertexSource , fragmentSource );
+    GlLayer trajLayer( shaderSolidColor );
     trajLayer.AddInput( "position" , 3 );
-    trajLayer.AddUniform( "incolor" );
-    trajLayer.AddUniform( "zoom" );
-    trajLayer.AddUniform( "shift" );
-    trajLayer.ZoomView( "zoom" , glm::mat4(1.) );
-    trajLayer.ShiftView( "shift" , glm::mat4(1.) );
+    trajLayer.SetUniform( "zoom" , glm::mat4(1.) );
+    trajLayer.SetUniform( "shift" , glm::mat4(1.) );
     trajLayer.BindCopyVB(this->verticesTrajectory,3);
     trajLayer.BindCopyIB(this->indicesTrajectory);
 
@@ -931,7 +805,7 @@ void SetReachable( const Map &mp , Map &buffer , const int &x , const int &y , c
     }
     mapTileLayer.AddInput( "texCoord" , 2 );
     mapTileLayer.BindCopyVB(this->verticesTexture,2,1);
-    mapTileLayer.AddTexture("applyTexture","texCoord","assets/tiles/clover.jpg");
+    mapTileLayer.SetTexture("applyTexture","texCoord","assets/dungeonCrawlSoup/dungeon/floor/lava_0.png",GL_RGBA);
 
     mapWallLayer.UseThisLayer();
     for ( size_t i = 0 ; i < this->myMap._ydim * this->myMap._xdim + this->myMap._extras.size() ; ++i ) {
@@ -939,25 +813,25 @@ void SetReachable( const Map &mp , Map &buffer , const int &x , const int &y , c
     }
     mapWallLayer.AddInput( "texCoord" , 2 );
     mapWallLayer.BindCopyVB(this->verticesTextureWalls,2,1);
-    mapWallLayer.AddTexture("applyTexture","texCoord","assets/tiles/rock02_2.jpg");
-
-
+    mapWallLayer.SetTexture("applyTexture","texCoord","assets/dungeonCrawlSoup/dungeon/wall/hive_0.png",GL_RGBA);
 
     this->bufferMap = this->myMap;
+    std::map<Uint32,bool (*)(const SDL_Event&,BattleMap*)> inputHandler;
+    inputHandler[SDL_QUIT] = QuitMap;
 
     // Wait for the user to quit
     while (!this->quit) {
-      uint32_t frameStart = SDL_GetTicks();
+      //uint32_t frameStart = SDL_GetTicks();
 
       SDL_Event event;
       while (SDL_PollEvent(&event) > 0) {
-        HandleInputEvent( event , this->myMap );
+        HandleInputEvent( event , this->myMap , inputHandler );
       }
       if ( this->leftButtonDown ) {
         int xNow, yNow;
         uint32_t buttons = SDL_GetMouseState(&xNow,&yNow);
         this->rots[ROTATE_Z].degrees += float(xNow - this->xLast)/2.;
-        this->rots[ROTATE_X].degrees += float(yNow - this->yLast)/10.;
+        //this->rots[ROTATE_X].degrees += float(yNow - this->yLast)/10.;
         if ( this->rots[ROTATE_Z].degrees < 0.)   this->rots[ROTATE_Z].degrees += 360.;
         if ( this->rots[ROTATE_Z].degrees > 360.) this->rots[ROTATE_Z].degrees -= 360.;
         if ( buttons & (SDL_BUTTON_LMASK == 0) ) {
@@ -967,7 +841,6 @@ void SetReachable( const Map &mp , Map &buffer , const int &x , const int &y , c
         this->yLast = yNow;
       }
 
-      //DrawFrame();
       glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
       glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
       UpdateViewTransformation();
@@ -979,7 +852,7 @@ void SetReachable( const Map &mp , Map &buffer , const int &x , const int &y , c
       UpdateTrajectory( this->tet1.pos , this->endTraj , vel );
       DrawTrajectory(trajLayer);
 
-      this->tet1.UpdateLoc(this->myMap,FACTOR,HFACTOR);
+      this->tet1.UpdateLoc(this->myMap);
       std::vector<Translation> ashift;
       ashift.push_back(Translation(1,tet1.location));
       DrawActor(actorLayer,ashift);
@@ -1010,7 +883,12 @@ void SetReachable( const Map &mp , Map &buffer , const int &x , const int &y , c
   }
 };
 
+bool QuitMap(const SDL_Event &e , BattleMap* mp) {
+  mp->quit = true;
+  return true;
+}
+
 int main(int argc, char **argv) {
   BattleMap main;
-  main.MainLoop(argc,argv);
+  return main.MainLoop(argc, argv);
 }

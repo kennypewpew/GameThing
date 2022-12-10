@@ -5,6 +5,9 @@
 #include <vector>
 #include <glm/vec3.hpp>
 
+float CoordToValue(const float &c, const int &max);
+float HeightToValue( const float &h );
+
 class ActorTetrahedron {
  public:
   std::vector<glm::vec3> posVerts;
@@ -19,7 +22,7 @@ class ActorTetrahedron {
 
   void UpdatePos( int x , int y , int z , int e );
 
-  void UpdateLoc( const Map &mp , const float &FACTOR , const float &HFACTOR );
+  void UpdateLoc( const Map &mp );
 
   int MoveRange();
   int JumpRange();

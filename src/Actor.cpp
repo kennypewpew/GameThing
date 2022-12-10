@@ -4,8 +4,19 @@
 #include <vector>
 #include <glm/vec3.hpp>
 
-float CoordToValue( const float& , const int& );
-float HeightToValue( const float& );
+//float CoordToValue( const float& , const int& );
+//float HeightToValue( const float& );
+
+float FACTOR = 1.5;
+float CoordToValue(const float &c, const int &max) {
+  return FACTOR*float(c)/float(max) - FACTOR/2.;
+}
+
+float HFACTOR = 100;
+float HeightToValue( const float &h ) {
+  return float(h) / HFACTOR;
+}
+
 
   ActorTetrahedron::ActorTetrahedron() {
     posVerts = std::vector<glm::vec3>(12);
@@ -33,7 +44,7 @@ float HeightToValue( const float& );
     return this->jumpRange;
   }
 
-  void ActorTetrahedron::UpdateLoc( const Map &mp , const float &FACTOR , const float &HFACTOR ) {
+  void ActorTetrahedron::UpdateLoc( const Map &mp ) {
     location = glm::vec3( pos[0] * FACTOR / mp._xdim
                         , pos[1] * FACTOR / mp._ydim
                         , float(pos[2]) / HFACTOR

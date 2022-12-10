@@ -33,4 +33,28 @@ class Translation {
   Translation(const float &d, const glm::vec3 &v) : distance(d) , vector(v) {}
 };
 
+struct Pos2D {
+  int x;
+  int y;
+};
+
+struct Pos2Df {
+  float x;
+  float y;
+};
+
+struct Box2D {
+  int x0;
+  int x1;
+  int y0;
+  int y1;
+};
+
+struct Box2Df {
+  float x0;
+  float x1;
+  float y0;
+  float y1;
+};
+
 
