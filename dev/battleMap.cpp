@@ -365,7 +365,7 @@ class BattleMap {
   void DrawMapTiles(GlLayer &mapTileLayer) {
     mapTileLayer.UseThisLayer();
     glm::vec4 color(1.0f, 0.0f, 1.0f, 1.f);
-    mapTileLayer.SetUniform( "incolor" , color );
+    //mapTileLayer.SetUniform( "incolor" , color );
     mapTileLayer.SetUniform( "view" , this->view );
     glDrawElements(GL_TRIANGLES,this->indicesTriangles.size()*sizeof(glm::vec2),GL_UNSIGNED_INT,NULL);
   }
@@ -373,7 +373,7 @@ class BattleMap {
   void DrawMapWalls(GlLayer &mapWallLayer) {
     mapWallLayer.UseThisLayer();
     glm::vec4 color(0.8f, 0.0f, 0.8f, 0.9f);
-    mapWallLayer.SetUniform( "incolor" , color );
+    //mapWallLayer.SetUniform( "incolor" , color );
     mapWallLayer.SetUniform( "view" , this->view );
     glDrawElements(GL_TRIANGLES,this->indicesTileWalls.size()*sizeof(glm::vec2),GL_UNSIGNED_INT,NULL);
   }
