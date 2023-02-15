@@ -14,6 +14,13 @@ enum ClickType {
   MCLICK
 };
 
+//template<typename T>
+//void FunctionHandler(void *v, void *a) {
+//  T* obj = (T*)v;
+//  T::FunctionArgs *arg = (T::FunctionArgs*)a;
+//  obj->FunctionHandler(arg);
+//}
+
 template<typename T>
 void ClickHandler(int x, int y, ClickType c, void *v) {
   T* obj = (T*)v;
@@ -212,6 +219,44 @@ class Button : public PopupMenu {
         , MenuItem m
         );
 };
+
+template<int N>
+class MulticolumnMenu {
+ public:
+  std::array<VerticalMenu,N> cols;
+  std::array<float,N> widths;
+  Box2Df bounds;
+
+  MulticolumnMenu();
+
+  MulticolumnMenu( Box2Df bound
+                 , std::array<float,N> ws
+                 , TextWriter *w
+                 , TextBackground *b
+                 , ScreenRegion *r
+                 , float s
+                 );
+
+  MulticolumnMenu( Box2Df bound
+                 , std::array<float,N> ws
+                 , TextWriter *w
+                 , TextBackground *b
+                 , ScreenRegion *r
+                 , float s
+                 , std::array<std::vector<MenuItem>,N> &mi
+                 );
+
+  ~MulticolumnMenu();
+
+  void Display();
+
+  void Remove();
+
+  void AddRow(std::array<std::string,N> r);
+
+  void AddRow(std::array<MenuItem,N> r);
+};
+
 
 class HorizontalMenu : public MenuCommon {
  public:

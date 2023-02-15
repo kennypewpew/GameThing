@@ -371,6 +371,107 @@ Button::Button( Pos2Df pos
   this->Display();
 }
 
+template<int N>
+MulticolumnMenu<N>::MulticolumnMenu() {}
+
+template<int N>
+MulticolumnMenu<N>::MulticolumnMenu( Box2Df bound
+               , std::array<float,N> ws
+               , TextWriter *w
+               , TextBackground *b
+               , ScreenRegion *r
+               , float s
+               ) {
+  widths = ws;
+
+  float len = bound.x1 - bound.x0;
+  Box2Df start = bound;
+  for ( int i = 0 ; i < N ; ++i ) {
+    start.x1 = start.x0 + widths[i] * len;
+    cols[i] = VerticalMenu(start,w,b,r,s);
+    start.x0 = start.x1;
+  }
+}
+
+template<int N>
+MulticolumnMenu<N>::MulticolumnMenu( Box2Df bound
+               , std::array<float,N> ws
+               , TextWriter *w
+               , TextBackground *b
+               , ScreenRegion *r
+               , float s
+               , std::array<std::vector<MenuItem>,N> &mi
+               ) {
+  float len = bound.x1 - bound.x0;
+  Box2Df start = bound;
+  for ( int i = 0 ; i < N ; ++i ) {
+    start.x1 = start.x0 + widths[i] * len;
+    cols[i] = VerticalMenu(bound,w,b,r,s,mi[i]);
+    start.x0 = start.x1;
+  }
+}
+
+template<int N>
+MulticolumnMenu<N>::~MulticolumnMenu() {}
+
+template<int N>
+void MulticolumnMenu<N>::Display() {
+  for ( int i = 0 ; i < N ; ++i ) {
+    cols[i].Display();
+  }
+}
+
+template<int N>
+void MulticolumnMenu<N>::Remove() {
+  for ( int i = 0 ; i < N ; ++i ) {
+    cols[i].Remove();
+  }
+}
+
+template<int N>
+void MulticolumnMenu<N>::AddRow(std::array<std::string,N> r) {
+  for ( int i = 0 ; i < N ; ++i ) {
+    cols[i].AddItem(r[i]);
+  }
+}
+
+template<int N>
+void MulticolumnMenu<N>::AddRow(std::array<MenuItem,N> r) {
+  for ( int i = 0 ; i < N ; ++i ) {
+    cols[i].AddItem(r[i]);
+  }
+}
+
+#define INSTANTIATE_MULTICOLUMNMENU(N)                                  \
+template MulticolumnMenu<N>::MulticolumnMenu();                         \
+template MulticolumnMenu<N>::MulticolumnMenu( Box2Df bound              \
+               , std::array<float,N> ws                                   \
+               , TextWriter *w                                          \
+               , TextBackground *b                                      \
+               , ScreenRegion *r                                        \
+               , float s                                                \
+               );                                                       \
+template MulticolumnMenu<N>::MulticolumnMenu( Box2Df bound              \
+               , std::array<float,N> ws                                   \
+               , TextWriter *w                                          \
+               , TextBackground *b                                      \
+               , ScreenRegion *r                                        \
+               , float s                                                \
+               , std::array<std::vector<MenuItem>,N> &mi                \
+               );                                                       \
+template MulticolumnMenu<N>::~MulticolumnMenu();                        \
+template void MulticolumnMenu<N>::Display();                            \
+template void MulticolumnMenu<N>::Remove();                             \
+template void MulticolumnMenu<N>::AddRow(std::array<std::string,N> r);  \
+template void MulticolumnMenu<N>::AddRow(std::array<MenuItem,N> r);
+
+INSTANTIATE_MULTICOLUMNMENU(2)
+INSTANTIATE_MULTICOLUMNMENU(3)
+INSTANTIATE_MULTICOLUMNMENU(4)
+
+#undef INSTANTIATE_MULTICOLUMNMENU
+
+
 HorizontalMenu::HorizontalMenu() : MenuCommon() {}
 
 HorizontalMenu::HorizontalMenu( Box2Df bound

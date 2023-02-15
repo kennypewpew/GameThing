@@ -14,6 +14,7 @@
 #include "Utility.h"
 #include "Text.h"
 #include "GUILayer.h"
+#include "Stats.h"
 
 #include "SDL.h"
 
@@ -60,10 +61,56 @@ class TestClass : public TmpClass {
   }
 };
 
+class Function {
+ public:
+  void (*fnPtr)(void*,void*);
+  void *fObj;
+  void *fArgs;
+
+  void operator()() {
+    fnPtr(fObj,fArgs);
+  }
+  void operator()(void *args) {
+    fnPtr(fObj,args);
+  }
+  void operator()(void *obj, void *args) {
+    fnPtr(obj, args);
+  }
+};
+
+class DialogueOptions {
+ public:
+  struct Option {
+    Function fn;
+    std::string text;
+  };
+  struct MenuArgs {
+    int choice;
+  };
+  std::vector<Option> options;
+  void MenuSelectHandler(MenuArgs ma) {
+    if ( ma.choice < options.size() ) {
+      options[ma.choice].fn();
+    }
+    else {
+      // TODO: error
+    }
+  }
+};
+
+class Person {
+ public:
+  int v1;
+  int v2;
+  int v3;
+  int v4;
+  int v5;
+};
+
 int main(void) {
   unsigned int DISP_WIDTH = 1000;
   unsigned int DISP_HEIGHT = 800;
-  InitializeSDL("GLES3+SDL2 Tutorial",DISP_WIDTH,DISP_HEIGHT);
+  InitializeSDL("GUI prototype",DISP_WIDTH,DISP_HEIGHT);
 
   std::string vertexSourceTextureStr   = shaderFileToString( "shader/inputTexture.vs" );
   std::string fragmentSourceTextureStr = shaderFileToString( "shader/inputTexture.fs" );
@@ -150,6 +197,13 @@ int main(void) {
 
   MenuItem mi( "button" , "" , MenuSelectHandler<TestClass> , &tc , &ar );
   Button b( {.x=0.2,.y=0.2} , &txtW, NULL, &w, 4.f, mi );
+
+  vPos = { .x0=-0.4,.x1=-0.0,.y0=0.5,.y1=-0.5 };
+  MulticolumnMenu<3> showStats(vPos, { 0.3, 0.3 , 0.3}, &txtW, &textBgLayer, &w, 2.f);
+  for ( int i = 1 ; i < N_STATS ; ++i ) {
+    showStats.AddRow( { MenuItem(StatNames[i]) , MenuItem(StatNames[i]) , MenuItem(std::to_string(3*i/2)) } );
+  }
+  showStats.Display();
 
   bool quit = false;
   bool menuShown = true;

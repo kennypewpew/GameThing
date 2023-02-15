@@ -11,7 +11,7 @@ class UuidMapper {
   UuidMapper() : cntr(0) {}
 
   uuid_t Insert( const T &toAdd ) {
-    while ( map.count( cntr ) ) ++cntr;
+    do { ++cntr; } while ( map.count( cntr ) || 0 == cntr );
     map[cntr] = toAdd;
     return cntr;
   }
