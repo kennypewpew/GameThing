@@ -24,7 +24,7 @@
 #include "Window.h"
 #include "GlLayer.h"
 #include "Types.h"
-#include "Actor.h"
+#include "BattleActor.h"
 #include "Physics.h"
 
 #include "stb_image.h"
@@ -848,6 +848,7 @@ void SetReachable( const Map &mp , Map &buffer , const int &x , const int &y , c
       DrawTileIdLayer(mapIdLayer);
       DrawMapTiles(mapTileLayer);
       DrawGridLines(gridLayer);
+      DrawMapWalls(mapWallLayer);
 
       UpdateTrajectory( this->tet1.pos , this->endTraj , vel );
       DrawTrajectory(trajLayer);
@@ -865,8 +866,6 @@ void SetReachable( const Map &mp , Map &buffer , const int &x , const int &y , c
       SetReachable( this->myMap , this->bufferMap , this->tet1.pos[0] , this->tet1.pos[1] , moveRange , jumpRange * HEIGHT_INCREMENT , this->tet1.pos[3] );
       FillReachableVertsInds( this->myMap , this->bufferMap , this->verticesMoveOverlay , this->indicesMoveOverlay );
       DrawMapOverlay(mapTileOverlay);
-
-      DrawMapWalls(mapWallLayer);
 
       SwapWindows();
 

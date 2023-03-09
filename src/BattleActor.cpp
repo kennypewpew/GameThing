@@ -1,4 +1,4 @@
-#include "Actor.h"
+#include "BattleActor.h"
 #include "Maps.h"
 
 #include <vector>

@@ -105,14 +105,29 @@ enum ItemTypes       { ITEM_IMPL  };
 enum TaskType        { TASK_IMPL  };
 #undef S_IMPL
 
+
+// So that we can keep the enum and names next to each other
+#ifdef COMPILE_STATS
+  #define EXTERN
+  #define IMPLEMENT(a)\
+    [] = { a };
+#else
+  #define EXTERN extern
+  #define IMPLEMENT(a)
+#endif
+
 #define S_IMPL(s) #s
-const char *StatNames[]  = { STAT_IMPL  };
-const char *SkillNames[] = { SKILL_IMPL };
-const char *GearNames[]  = { GEAR_IMPL  };
-const char *ModNames[]   = { MOD_IMPL   };
-const char *ItemNames[]  = { ITEM_IMPL  };
-const char *TaskNames[]  = { TASK_IMPL  };
+EXTERN const char *StatNames  IMPLEMENT( STAT_IMPL  );
+EXTERN const char *SkillNames IMPLEMENT( SKILL_IMPL );
+EXTERN const char *GearNames  IMPLEMENT( GEAR_IMPL  );
+EXTERN const char *ModNames   IMPLEMENT( MOD_IMPL   );
+EXTERN const char *ItemNames  IMPLEMENT( ITEM_IMPL  );
+EXTERN const char *TaskNames  IMPLEMENT( TASK_IMPL  );
+
 #undef S_IMPL
+#ifndef COMPILE_STATS
+#undef EXTERN
+#endif
 
 typedef int StatSheet[N_STATS];
 typedef uint64_t SkillXp[N_SKILLS];
@@ -147,10 +162,7 @@ struct Equippable {
   SupportedMods mods[MAX_GEAR_MODS];
 };
 
-void AddXp( SkillXp xp, SupportedSkills field, int val ) {
-  if ( (xp[field] + val) > xp[field] ) xp[field] = xp[field] + val;
-  // TODO: else saturate
-}
+void AddXp( SkillXp xp, SupportedSkills field, int val );
 
 class Adventurer {
  public:
