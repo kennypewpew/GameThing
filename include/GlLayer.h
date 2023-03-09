@@ -11,20 +11,42 @@
 
 std::string shaderFileToString( const std::string &fl );
 
-class Shader {
+class ShaderBase {
  public:
   GLuint sp, vs, fs;
 
-  Shader( const char *vShader
-        , const char *fShader
-        );
-  Shader( const std::string &vShader
-        , const std::string &fShader
-        );
-  ~Shader();
+  ShaderBase( const char *vShader
+            , const char *fShader
+            );
+  ShaderBase( const std::string &vShader
+            , const std::string &fShader
+            );
+  ~ShaderBase() {}
   void Compile( const char *vShader
               , const char *fShader
               );
+  void Destroy();
+};
+
+class Shader : ShaderBase {
+ public:
+  Shader( ShaderBase b ) : ShaderBase(b) {}
+  Shader( const char *vShader
+        , const char *fShader
+        ) : ShaderBase(vShader, fShader) {}
+  Shader( const std::string &vShader
+        , const std::string &fShader
+        ) : ShaderBase(vShader, fShader) {}
+  ~Shader();
+
+  void operator=(ShaderBase b) {
+    //ShaderBase::Destroy();
+    ShaderBase::sp = b.sp;
+    ShaderBase::vs = b.vs;
+    ShaderBase::fs = b.fs;
+  }
+
+  GLuint sp() const;
 };
 
 class GlLayer {

@@ -23,6 +23,7 @@ void shaderCompileCheck(GLint s,const char *src) {
   GLint status;
   glGetShaderiv(s, GL_COMPILE_STATUS, &status);
   if ( status != GL_TRUE ) {
+    printf("Failed to compile shader:\n");
     char buffer[512];
     glGetShaderInfoLog(s, 512, NULL, buffer);
     printf("%s\n",buffer);
@@ -41,7 +42,7 @@ std::string shaderFileToString( const std::string &fl ) {
   size_t sz = SDL_RWsize(io)+1;
   char *buf = (char*)malloc(sz*sizeof(char));
   buf[sz-1] = '\0';
-  SDL_RWread(io,buf,sz,1);
+  SDL_RWread(io,buf,sz-1,1);
   SDL_RWclose(io);
 
   std::string res(buf);
@@ -50,29 +51,23 @@ std::string shaderFileToString( const std::string &fl ) {
 }
 
 
-Shader::Shader( const std::string &vShader
-              , const std::string &fShader
-              ) {
+ShaderBase::ShaderBase( const std::string &vShader
+                      , const std::string &fShader
+                      ) {
   std::string vString = shaderFileToString( vShader );
   std::string fString = shaderFileToString( fShader );
   this->Compile( vString.c_str() , fString.c_str() );
 }
 
-Shader::Shader( const char *vShader
-              , const char *fShader
-              ) {
+ShaderBase::ShaderBase( const char *vShader
+                      , const char *fShader
+                      ) {
   this->Compile( vShader , fShader );
 }
 
-Shader::~Shader() {
-  glDeleteProgram(this->sp);
-  glDeleteShader(this->vs);
-  glDeleteShader(this->fs);
-}
-
-void Shader::Compile( const char *vShader
-                    , const char *fShader
-                    ) {
+void ShaderBase::Compile( const char *vShader
+                        , const char *fShader
+                        ) {
   this->sp = glCreateProgram();
 
   // Compile shaders
@@ -95,6 +90,19 @@ void Shader::Compile( const char *vShader
   glUseProgram(this->sp);
 }
 
+GLuint Shader::sp() const {
+  return ShaderBase::sp;
+}
+
+Shader::~Shader() {
+  ShaderBase::Destroy();
+}
+
+void ShaderBase::Destroy() {
+  glDeleteProgram(ShaderBase::sp);
+  glDeleteShader (ShaderBase::vs);
+  glDeleteShader (ShaderBase::fs);
+}
 
 void GlLayer::Construct() {
   this->vChanged = false;
@@ -112,7 +120,7 @@ void GlLayer::Construct() {
 
 GlLayer::GlLayer( const Shader &shader ) {
   this->Construct();
-  this->sp = shader.sp;
+  this->sp = shader.sp();
   glUseProgram(this->sp);
 }
 
