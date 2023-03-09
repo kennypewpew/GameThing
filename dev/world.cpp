@@ -30,8 +30,8 @@
 #include "WorldMap.h"
 #include "GlobalActor.h"
 
-const int MAPXDIM = 30;
-const int MAPYDIM = 30;
+const int xdim = 30;
+const int ydim = 30;
 
 const unsigned int DISP_WIDTH = 960;
 const unsigned int DISP_HEIGHT = 960;
@@ -416,6 +416,8 @@ class WorldMapWindow {
 };
 
 int main(int argc, char **argv) {
+  SetMapDims(xdim,ydim);
+
   WorldMapWindow main;
   main.MainLoop();
 }

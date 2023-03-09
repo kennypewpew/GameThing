@@ -1,5 +1,13 @@
 #include "GlobalActor.h"
 
+int MAPXDIM = 1;
+int MAPYDIM = 1;
+
+void SetMapDims(int x, int y) {
+  MAPXDIM = x;
+  MAPYDIM = y;
+}
+
 void GlobalActor::DecayRelations(float rate) {
   for ( auto &r : relations ) {
     r.second *= rate;

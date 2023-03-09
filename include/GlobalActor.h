@@ -7,8 +7,10 @@
 #include <queue>
 #include <memory>
 
-extern const int MAPXDIM;
-extern const int MAPYDIM;
+extern int MAPXDIM;
+extern int MAPYDIM;
+
+void SetMapDims(int x, int y);
 
 class GlobalActor {
  public:

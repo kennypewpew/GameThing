@@ -113,7 +113,7 @@ enum TaskType        { TASK_IMPL  };
     [] = { a };
 #else
   #define EXTERN extern
-  #define IMPLEMENT(a)
+  #define IMPLEMENT(a) []
 #endif
 
 #define S_IMPL(s) #s

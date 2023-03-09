@@ -158,7 +158,8 @@ int main(void) {
             {
               w.HandleClick(xPos,yPos,LCLICK);
               if ( !menuShown ) {
-                menu.startPos = PixelsToGlPos( xPos , yPos );
+                Pos2Df p = PixelsToGlPos( xPos , yPos );
+                menu.bounds = { .x0 = p.x , .y0 = p.y };
                 menu.Display();
                 menuShown = true;
               }
