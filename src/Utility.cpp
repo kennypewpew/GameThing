@@ -31,6 +31,18 @@ std::string StripQuotes(const std::string &in) {
   return res;
 }
 
+void SetSquare2DPos( const float vx0 , const float vy0
+                   , const float vx1 , const float vy1
+                   , std::vector<glm::vec3> &verts
+                   , const size_t offset
+                   ) {
+  size_t initialId = offset;
+  verts[initialId + 0] = glm::vec3(vx0,vy0,0.);
+  verts[initialId + 1] = glm::vec3(vx0,vy1,0.);
+  verts[initialId + 2] = glm::vec3(vx1,vy1,0.);
+  verts[initialId + 3] = glm::vec3(vx1,vy0,0.);
+}
+
 void AddSquare2D( const float vx0 , const float vy0
                 , const float vx1 , const float vy1
                 , std::vector<glm::vec3> &verts
@@ -48,6 +60,18 @@ void AddSquare2D( const float vx0 , const float vy0
   ids.push_back(initialId+2);
   ids.push_back(initialId+3);
 }
+
+void AddSquare2D( const float vx0 , const float vy0
+                , const float vx1 , const float vy1
+                , glm::vec3 &color
+                , std::vector<glm::vec3> &verts
+                , std::vector<GLuint> &ids
+                , std::vector<glm::vec3> &colors
+                ) {
+  AddSquare2D( vx0 , vy0 , vx1 , vy1 , verts , ids );
+  for ( int i = 0 ; i < 4 ; ++i ) colors.push_back(color);
+}
+
 
 void AddSquare2D( const float vx0 , const float vy0
                 , const float vx1 , const float vy1
@@ -74,4 +98,10 @@ void AddSquare2D( const float vx0 , const float vy0
   texture.push_back(glm::vec2(tx1,ty0));
 }
 
+void AddTextureCoords( std::vector<glm::vec2> &texArray , Box2Df tCoords ) {
+  texArray.push_back(glm::vec2(tCoords.x0,tCoords.y0));
+  texArray.push_back(glm::vec2(tCoords.x0,tCoords.y1));
+  texArray.push_back(glm::vec2(tCoords.x1,tCoords.y1));
+  texArray.push_back(glm::vec2(tCoords.x1,tCoords.y0));
+}
 

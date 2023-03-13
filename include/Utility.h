@@ -12,10 +12,24 @@ std::string JoinPath(const std::string &a, const std::string &b);
 
 std::string StripQuotes(const std::string &in);
 
+void SetSquare2DPos( const float vx0 , const float vy0
+                   , const float vx1 , const float vy1
+                   , std::vector<glm::vec3> &verts
+                   , const size_t offset
+                   );
+
 void AddSquare2D( const float vx0 , const float vy0
                 , const float vx1 , const float vy1
                 , std::vector<glm::vec3> &verts
                 , std::vector<GLuint> &ids
+                );
+
+void AddSquare2D( const float vx0 , const float vy0
+                , const float vx1 , const float vy1
+                , glm::vec3 &color
+                , std::vector<glm::vec3> &verts
+                , std::vector<GLuint> &ids
+                , std::vector<glm::vec3> &colors
                 );
 
 void AddSquare2D( const float vx0 , const float vy0
@@ -26,4 +40,6 @@ void AddSquare2D( const float vx0 , const float vy0
                 , std::vector<GLuint> &ids
                 , std::vector<glm::vec2> &texture
                 );
+
+void AddTextureCoords( std::vector<glm::vec2> &texArray , Box2Df tCoords );
 

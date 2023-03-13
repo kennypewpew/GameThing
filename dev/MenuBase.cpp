@@ -140,7 +140,6 @@ int main(void) {
 
   TextBackground textBgLayer(textBgShader);
 
-
   CharMap fontInfo[3];
   fontInfo[0].ReadFontFile("assets/fonts","gidole_regular_10.fnt");
   fontInfo[1].ReadFontFile("assets/fonts","gidole_regular_15.fnt");

@@ -36,6 +36,8 @@ class Translation {
 struct Pos2D {
   int x;
   int y;
+  Pos2D() {}
+  Pos2D(int xx, int yy) : x(xx), y(yy) {}
 };
 
 struct Pos2Df {
