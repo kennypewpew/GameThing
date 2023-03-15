@@ -5,8 +5,10 @@
 #include <string>
 #include <algorithm>
 #include <vector>
+#include <functional>
 
 #include <glm/glm.hpp>
+#include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
 
 Pos2Df PixelsToGlPos( int x , int y ) {
@@ -103,5 +105,70 @@ void AddTextureCoords( std::vector<glm::vec2> &texArray , Box2Df tCoords ) {
   texArray.push_back(glm::vec2(tCoords.x0,tCoords.y1));
   texArray.push_back(glm::vec2(tCoords.x1,tCoords.y1));
   texArray.push_back(glm::vec2(tCoords.x1,tCoords.y0));
+}
+
+void CreateConnectedGrid( int xDim
+                        , int yDim
+                        , std::vector<glm::vec3> &vertices
+                        , std::vector<GLuint> &indices
+                        ) {
+  for ( int j = 0 ; j <= yDim ; ++j ) {
+    for ( int i = 0 ; i <= xDim ; ++i ) {
+      float x = (float(i) / float(xDim) * 2. - 1.)*0.99;
+      float y = (float(j) / float(yDim) * 2. - 1.)*0.99;
+      vertices.push_back(glm::vec3(x,y,0));
+    }
+  }
+  for ( int j = 0 ; j < yDim ; ++j ) {
+    indices.push_back( ( j ) * (xDim+1) );
+    indices.push_back( (j+1) * (xDim+1) );
+
+    indices.push_back( (yDim+1)*xDim + j   );
+    indices.push_back( (yDim+1)*xDim + j+1 );
+
+    for ( int i = 0 ; i < xDim ; ++i ) {
+      indices.push_back( ( j ) * (xDim+1) + (i  ) );
+      indices.push_back( (j+1) * (xDim+1) + (i+1) );
+
+      indices.push_back( ( j ) * (xDim+1) + (i  ) );
+      indices.push_back( ( j ) * (xDim+1) + (i+1) );
+
+      indices.push_back( ( j ) * (xDim+1) + (i  ) );
+      indices.push_back( (j+1) * (xDim+1) + (i  ) );
+
+      indices.push_back( (j+1) * (xDim+1) + (i+1) );
+      indices.push_back( ( j ) * (xDim+1) + (i+1) );
+
+      indices.push_back( (j+1) * (xDim+1) + (i+1) );
+      indices.push_back( (j+1) * (xDim+1) + (i  ) );
+    }
+  }
+}
+
+void CreateConnectedGridColored( int xDim
+                               , int yDim
+                               , std::vector<glm::vec3> &vertices
+                               , std::vector<GLuint> &indices
+                               , std::vector<glm::vec3> &colors
+                               , std::function<glm::vec3(int,int,int,int)> &f
+                               ) {
+  CreateConnectedGrid(xDim, yDim, vertices, indices);
+  for ( int j = 0 ; j <= yDim ; ++j ) {
+    for ( int i = 0 ; i <= xDim ; ++i ) {
+      colors.push_back(f(i,j,xDim,yDim));
+    }
+  }
+}
+
+void FpsPrinter::Tick() {
+  ++fpsCount;
+  uint32_t t = SDL_GetTicks();
+  elapsed += t - prevTick;
+  prevTick = t;
+  if ( elapsed > oneSecond ) {
+    printf("%d FPS\n", fpsCount);
+    elapsed = elapsed % oneSecond;
+    fpsCount = 0;
+  }
 }
 

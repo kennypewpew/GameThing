@@ -1,7 +1,7 @@
 CC=g++
 
 SDL_LINK_FLAGS= -lSDL2 -lGLESv2 -I/usr/include/SDL2
-GL_LINK_FLAGS= -lEGL
+GL_LINK_FLAGS= -lEGL -lGL
 
 IFLAGS= -I ./include
 CFLAGS= -O2 -g -Wall -Wno-reorder
@@ -23,7 +23,11 @@ ALL_DEV=$(subst dev,bin,$(DEV_TMP))
 #all: run_world
 #all: run_WorldState
 #all: run_BattleInfo
-all: run_MenuBase
+#all: run_MenuBase
+#all: run_battleMap
+#all: run_relationships
+#all: run_Chess
+all: run_shaderTest
 
 compile_all: $(ALL_DEV)
 

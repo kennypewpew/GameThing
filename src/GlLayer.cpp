@@ -245,6 +245,17 @@ template<> void GlLayer::SetUniform<typeName>(                     \
 template void GlLayer::SetUniform( const std::string &name         \
                                  , const typeName &val );
 
+#define IMPL_SETUNIFORM_SCA( typeName, glFn )                      \
+template<> void GlLayer::SetUniform<typeName>(                     \
+          const std::string &name                                  \
+        , const typeName &val ) {                                  \
+    GLint uniTrans = glGetUniformLocation(this->sp, name.c_str()); \
+    assert( uniTrans != -1 );                                      \
+    glFn(uniTrans, val);                                           \
+}                                                                  \
+template void GlLayer::SetUniform( const std::string &name         \
+                                 , const typeName &val );
+
 IMPL_SETUNIFORM_MAT( glm::mat2 , glUniformMatrix2fv )
 IMPL_SETUNIFORM_MAT( glm::mat3 , glUniformMatrix3fv )
 IMPL_SETUNIFORM_MAT( glm::mat4 , glUniformMatrix4fv )
@@ -252,6 +263,10 @@ IMPL_SETUNIFORM_MAT( glm::mat4 , glUniformMatrix4fv )
 IMPL_SETUNIFORM_VEC( glm::vec2 , glUniform2fv )
 IMPL_SETUNIFORM_VEC( glm::vec3 , glUniform3fv )
 IMPL_SETUNIFORM_VEC( glm::vec4 , glUniform4fv )
+
+IMPL_SETUNIFORM_SCA( float  , glUniform1f  )
+IMPL_SETUNIFORM_SCA( GLint  , glUniform1i  )
+IMPL_SETUNIFORM_SCA( GLuint , glUniform1ui )
 
 #undef IMPL_SETUNIFORM_MAT
 #undef IMPL_SETUNIFORM_VEC

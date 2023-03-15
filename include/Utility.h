@@ -1,8 +1,24 @@
 #pragma once
 
+#include <glm/vec2.hpp>
+#include <glm/vec3.hpp>
+
 #include "Types.h"
 
 #include <string>
+#include <functional>
+
+class FpsPrinter {
+ public:
+  uint32_t prevTick = 0;
+  uint32_t elapsed = 0;
+  uint32_t fpsCount = 0;
+  uint32_t oneSecond = 1000;
+
+  FpsPrinter() {}
+
+  void Tick();
+};
 
 Pos2Df PixelsToGlPos( int x , int y );
 
@@ -42,4 +58,19 @@ void AddSquare2D( const float vx0 , const float vy0
                 );
 
 void AddTextureCoords( std::vector<glm::vec2> &texArray , Box2Df tCoords );
+
+void CreateConnectedGrid( int xDim
+                        , int yDim
+                        , std::vector<glm::vec3> &vertices
+                        , std::vector<GLuint> &indices
+                        );
+
+void CreateConnectedGridColored( int xDim
+                               , int yDim
+                               , std::vector<glm::vec3> &vertices
+                               , std::vector<GLuint> &indices
+                               , std::vector<glm::vec3> &colors
+                               , std::function<glm::vec3(int,int,int,int)> &f
+                               );
+
 
