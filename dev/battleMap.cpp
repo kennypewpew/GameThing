@@ -28,7 +28,7 @@
 #include "Physics.h"
 #include "Utility.h"
 
-#include "stb_image.h"
+#include "external/stb_image.h"
 
 #ifdef __ANDROID__
 #include <jni.h>
