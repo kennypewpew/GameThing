@@ -240,11 +240,12 @@ void FpsPrinter::Tick() {
 
 void FrameTimeLimiter::Tick() {
   uint32_t t = SDL_GetTicks();
-  elapsed += t - prevTick;
-  prevTick = t;
+  elapsed = t - prevTick;
   if ( elapsed < minTime ) {
     uint32_t waitTime = minTime - elapsed;
-    usleep( waitTime * 1000 );
+    usleep( waitTime * 1000 - 200 ); // Account for the time the Tick function takes
   }
+  t = SDL_GetTicks();
+  prevTick = t;
 }
 

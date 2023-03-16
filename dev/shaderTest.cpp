@@ -109,6 +109,7 @@ class ShowWater {
     //uint32_t elapsedSeconds = 0;
 
     FpsPrinter fps;
+    FrameTimeLimiter limit(10);
     float time = 0;
 
     while (!this->quit) {
@@ -141,6 +142,7 @@ class ShowWater {
         uint32_t t = SDL_GetTicks();
         prev = t;
       }
+      limit.Tick();
       fps.Tick();
 
     }
