@@ -243,7 +243,7 @@ void FrameTimeLimiter::Tick() {
   elapsed = t - prevTick;
   if ( elapsed < minTime ) {
     uint32_t waitTime = minTime - elapsed;
-    usleep( waitTime * 1000 - 200 ); // Account for the time the Tick function takes
+    usleep( waitTime * 1000 - 200 ); // Account some time for running Tick()
   }
   t = SDL_GetTicks();
   prevTick = t;
