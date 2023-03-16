@@ -706,9 +706,9 @@ void SetReachable( const Map &mp , Map &buffer , const int &x , const int &y , c
   }
 
   int MainLoop(int argc, char **argv) {
-    Shader shaderInputColor( std::string("shader/inputColor.vs") , std::string("shader/inputColor.fs") );
-    Shader shaderSolidColor( std::string("shader/solidColor.vs") , std::string("shader/solidColor.fs") );
-    Shader shaderTexture( std::string("shader/inputTexture.vs") , std::string("shader/inputTexture.fs") );
+    Shader shaderInputColor( "shader/inputColor.vs" , "shader/inputColor.fs" );
+    Shader shaderSolidColor( "shader/solidColor.vs" , "shader/solidColor.fs" );
+    Shader shaderTexture( "shader/inputTexture.vs" , "shader/inputTexture.fs" );
 
     //this->myMap = ReadMapFile("session/default/maps/example.map");
     this->myMap = GenerateMap(11,11,std::vector<VerticalityFeatures>(1,MOUNTAIN));

@@ -11,9 +11,19 @@
 
 std::string shaderFileToString( const std::string &fl );
 
+class ShaderInfo {
+ public:
+  const char *rawTxt;
+  GLenum type;
+
+  ShaderInfo() {}
+  ShaderInfo(const char *txt, GLenum typ) : rawTxt(txt), type(typ) {}
+};
+
 class ShaderBase {
  public:
   GLuint sp, vs, fs;
+  std::vector<GLuint> shaderIds;
 
   ShaderBase( const char *vShader
             , const char *fShader
@@ -24,6 +34,9 @@ class ShaderBase {
   ~ShaderBase() {}
   void Compile( const char *vShader
               , const char *fShader
+              );
+  //void Compile( const char **shaders
+  void Compile( std::vector<ShaderInfo> &shaders
               );
   void Destroy();
 };

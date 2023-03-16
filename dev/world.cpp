@@ -241,13 +241,13 @@ class WorldMapWindow {
 
 
   int MainLoop() {
-    std::string inputColorVS = shaderFileToString( "shader/inputColor.vs" );
-    std::string inputColorFS = shaderFileToString( "shader/inputColor.fs" );
-    std::string inputTextureVS = shaderFileToString( "shader/inputTexture.vs" );
-    std::string inputTextureFS = shaderFileToString( "shader/inputTexture.fs" );
+    //std::string inputColorVS = shaderFileToString( "shader/inputColor.vs" );
+    //std::string inputColorFS = shaderFileToString( "shader/inputColor.fs" );
+    //std::string inputTextureVS = shaderFileToString( "shader/inputTexture.vs" );
+    //std::string inputTextureFS = shaderFileToString( "shader/inputTexture.fs" );
 
-    Shader shadCol( inputColorVS.c_str() , inputColorFS.c_str() );
-    Shader shadTex( inputTextureVS.c_str() , inputTextureFS.c_str() );
+    Shader shadCol( "shader/inputColor.vs" , "shader/inputColor.fs" );
+    Shader shadTex( "shader/inputTexture.vs" , "shader/inputTexture.fs" );
 
     std::vector<glm::vec3> verCanvas;
     std::vector<GLuint>    indCanvas;

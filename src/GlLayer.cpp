@@ -30,11 +30,11 @@ void shaderCompileCheck(GLint s,const char *src) {
   }
 }
 
-std::string shaderFileToString( const std::string &fl ) {
-  SDL_RWops *io = SDL_RWFromFile( fl.c_str() , "r" );
+std::string shaderFileToString( const char *fl ) {
+  SDL_RWops *io = SDL_RWFromFile( fl , "r" );
   if ( io == NULL ) {
     SDL_Log("-----------------------------------");
-    SDL_Log("Failed to find shader file: %s",fl.c_str());
+    SDL_Log("Failed to find shader file: %s",fl);
     return fl;
   }
 
@@ -51,41 +51,44 @@ std::string shaderFileToString( const std::string &fl ) {
 }
 
 
-ShaderBase::ShaderBase( const std::string &vShader
-                      , const std::string &fShader
+ShaderBase::ShaderBase( const char* vShader
+                      , const char* fShader
                       ) {
   std::string vString = shaderFileToString( vShader );
   std::string fString = shaderFileToString( fShader );
   this->Compile( vString.c_str() , fString.c_str() );
 }
 
-ShaderBase::ShaderBase( const char *vShader
-                      , const char *fShader
+ShaderBase::ShaderBase( const std::string &vShader
+                      , const std::string &fShader
                       ) {
-  this->Compile( vShader , fShader );
+  this->Compile( vShader.c_str() , fShader.c_str() );
 }
 
 void ShaderBase::Compile( const char *vShader
                         , const char *fShader
                         ) {
+  std::vector<ShaderInfo> s = { ShaderInfo(vShader,GL_VERTEX_SHADER), ShaderInfo(fShader,GL_FRAGMENT_SHADER) };
+  Compile( s );
+}
+
+void ShaderBase::Compile( std::vector<ShaderInfo> &shaders
+                        ) {
   this->sp = glCreateProgram();
 
   // Compile shaders
-  if ( vShader != NULL ) {
-    this->vs = glCreateShader(GL_VERTEX_SHADER);
-    glShaderSource(this->vs,1,&vShader,NULL);
-    glCompileShader(this->vs);
-    shaderCompileCheck(this->vs,vShader);
-    glAttachShader(this->sp, this->vs);
+  for ( size_t i = 0 ; i < shaders.size() ; ++i ) {
+    const char *shader = shaders[i].rawTxt;
+    if ( shader != NULL ) {
+      GLuint s = glCreateShader(shaders[i].type);
+      glShaderSource(s,1,&shader,NULL);
+      glCompileShader(s);
+      shaderCompileCheck(s,shader);
+      glAttachShader(this->sp, s);
+      shaderIds.push_back(s);
+    }
   }
 
-  if ( fShader != NULL ) {
-    this->fs = glCreateShader(GL_FRAGMENT_SHADER);
-    glShaderSource(this->fs,1,&fShader,NULL);
-    glCompileShader(this->fs);
-    shaderCompileCheck(this->fs,fShader);
-    glAttachShader(this->sp, this->fs);
-  }
   glLinkProgram(this->sp);
   glUseProgram(this->sp);
 }
@@ -99,9 +102,8 @@ Shader::~Shader() {
 }
 
 void ShaderBase::Destroy() {
-  glDeleteProgram(ShaderBase::sp);
-  glDeleteShader (ShaderBase::vs);
-  glDeleteShader (ShaderBase::fs);
+  glDeleteProgram(sp);
+  for ( size_t i = 0 ; i < shaderIds.size() ; ++i ) glDeleteShader(shaderIds[i]);
 }
 
 void GlLayer::Construct() {

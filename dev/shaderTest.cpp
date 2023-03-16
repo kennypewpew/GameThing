@@ -56,7 +56,7 @@ class ShowWater {
   ShowWater() {}
 
   int MainLoop(int argc, char **argv) {
-    Shader shaderInputColor( std::string("shader/wavyColor.vs") , std::string("shader/diffuseLight.fs") );
+    Shader shaderInputColor( "shader/waterDrop.vs" , "shader/diffuseLight.fs" );
 
     int xDim = 500;
     int yDim = 500;

@@ -52,15 +52,9 @@ int main(void) {
   unsigned int DISP_HEIGHT = 800;
   InitializeSDL("GLES3+SDL2 Tutorial",DISP_WIDTH,DISP_HEIGHT);
 
-  std::string vertexSourceTextureStr   = shaderFileToString( "shader/inputTexture.vs" );
-  std::string fragmentSourceTextureStr = shaderFileToString( "shader/inputTexture.fs" );
-  std::string fragmentSourceColorTextureStr = shaderFileToString( "shader/coloredTexture.fs" );
-  std::string vertexSolidColorStr = shaderFileToString( "shader/solidColor.vs" );
-  std::string fragmentSolidColorStr = shaderFileToString( "shader/solidColor.fs" );
-
-  Shader bgShader(vertexSourceTextureStr.c_str(), fragmentSourceTextureStr.c_str());
-  Shader textShader(vertexSourceTextureStr.c_str(), fragmentSourceColorTextureStr.c_str());
-  Shader textBgShader( vertexSolidColorStr.c_str() , fragmentSolidColorStr.c_str() );
+  Shader bgShader("shader/inputTexture.vs", "shader/inputTexture.fs");
+  Shader textShader("shader/inputTexture.vs", "shader/coloredTexture.fs");
+  Shader textBgShader( "shader/solidColor.vs" , "shader/solidColor.fs" );
 
   std::vector<glm::vec3> bgVerts;
   std::vector<GLuint> bgIds;
