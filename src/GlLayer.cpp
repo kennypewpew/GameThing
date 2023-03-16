@@ -225,11 +225,15 @@ void GlLayer::DrawThisLayer() {
     glDrawElements(GL_TRIANGLES,this->idSize,GL_UNSIGNED_INT,NULL);
 }
 
+// TODO: See if it's worth adding a map to store uniform locations
+//         instead of doing lookups each time
 #define IMPL_SETUNIFORM_MAT( typeName, glFn )                      \
 template<> void GlLayer::SetUniform<typeName>(                     \
           const std::string &name                                  \
         , const typeName &val ) {                                  \
     GLint uniTrans = glGetUniformLocation(this->sp, name.c_str()); \
+    if ( uniTrans == -1 )                                          \
+      throw std::runtime_error("Failed to find uniform: " + name); \
     assert( uniTrans != -1 );                                      \
     glFn(uniTrans, 1, GL_FALSE, glm::value_ptr(val));              \
 }                                                                  \
@@ -241,6 +245,8 @@ template<> void GlLayer::SetUniform<typeName>(                     \
           const std::string &name                                  \
         , const typeName &val ) {                                  \
     GLint uniTrans = glGetUniformLocation(this->sp, name.c_str()); \
+    if ( uniTrans == -1 )                                          \
+      throw std::runtime_error("Failed to find uniform: " + name); \
     assert( uniTrans != -1 );                                      \
     glFn(uniTrans, 1, glm::value_ptr(val));                        \
 }                                                                  \
@@ -252,6 +258,8 @@ template<> void GlLayer::SetUniform<typeName>(                     \
           const std::string &name                                  \
         , const typeName &val ) {                                  \
     GLint uniTrans = glGetUniformLocation(this->sp, name.c_str()); \
+    if ( uniTrans == -1 )                                          \
+      throw std::runtime_error("Failed to find uniform: " + name); \
     assert( uniTrans != -1 );                                      \
     glFn(uniTrans, val);                                           \
 }                                                                  \

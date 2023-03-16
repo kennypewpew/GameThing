@@ -123,9 +123,6 @@ void CreateConnectedGrid( int xDim
     indices.push_back( ( j ) * (xDim+1) );
     indices.push_back( (j+1) * (xDim+1) );
 
-    indices.push_back( (yDim+1)*xDim + j   );
-    indices.push_back( (yDim+1)*xDim + j+1 );
-
     for ( int i = 0 ; i < xDim ; ++i ) {
       indices.push_back( ( j ) * (xDim+1) + (i  ) );
       indices.push_back( (j+1) * (xDim+1) + (i+1) );
@@ -143,6 +140,11 @@ void CreateConnectedGrid( int xDim
       indices.push_back( (j+1) * (xDim+1) + (i  ) );
     }
   }
+  for ( int j = 0 ; j < xDim ; ++j ) {
+    indices.push_back( (yDim+1)*xDim + j   );
+    indices.push_back( (yDim+1)*xDim + j+1 );
+  }
+
 }
 
 void CreateConnectedGridColored( int xDim
@@ -160,6 +162,70 @@ void CreateConnectedGridColored( int xDim
   }
 }
 
+void CreateCyclonePointsColored( float r0
+                               , float r1
+                               , int degInc
+                               , float height
+                               , int hLevels
+                               , std::vector<glm::vec3> &vertices
+                               , std::vector<GLuint> &indices
+                               , std::vector<glm::vec3> &colors
+                               ) {
+  const double pi = std::acos(-1);
+  uint32_t cntr = 0;
+
+  // Takes [0,1] input and makes it a nicer shape
+  auto radiusFunction = [](float in) {
+    return in*in;
+  };
+
+  for ( int hInc = 0 ; hInc <= hLevels ; ++hInc ) {
+    float hProp = float(hInc) / float(hLevels);
+    float r = radiusFunction(hProp) * (r1 - r0) + r0;
+
+    for ( int deg = 0 ; deg < 360 ; deg += degInc ) {
+      float angle = float(deg) * pi / 180.;
+
+      float z = height * hProp;
+
+      float R = 0.5 + sin(angle)/2.;
+      float G = 0.5 + cos(angle)/2.;
+      float B = hProp;
+
+      vertices.push_back(glm::vec3(r,angle,-z));
+      colors.push_back(glm::vec3(R,G,B));
+      indices.push_back(cntr++);
+    }
+  }
+}
+
+void CreateSpherePointsColored( float r
+                              , int degInc
+                              , float height
+                              , int hLevels
+                              , std::vector<glm::vec3> &vertices
+                              , std::vector<GLuint> &indices
+                              , std::vector<glm::vec3> &colors
+                              ) {
+  const double pi = std::acos(-1);
+  uint32_t cntr = 0;
+
+  for ( int degA = 0 ; degA < 360 ; degA += degInc ) {
+    for ( int degB = 0 ; degB < 360 ; degB += degInc ) {
+      float theta = float(degA) * pi / 180.;
+      float phi   = float(degB) * pi / 180.;
+
+      float R = 0.5 + 0.5*(cos(theta) * sin(phi  ));
+      float G = 0.5 + 0.5*(sin(theta) * sin(phi  ));
+      float B = 0.5 + 0.5*(             cos(phi  ));
+
+      vertices.push_back(glm::vec3(r,theta,phi));
+      colors.push_back(glm::vec3(R,G,B));
+      indices.push_back(cntr++);
+    }
+  }
+}
+
 void FpsPrinter::Tick() {
   ++fpsCount;
   uint32_t t = SDL_GetTicks();
@@ -169,6 +235,16 @@ void FpsPrinter::Tick() {
     printf("%d FPS\n", fpsCount);
     elapsed = elapsed % oneSecond;
     fpsCount = 0;
+  }
+}
+
+void FrameTimeLimiter::Tick() {
+  uint32_t t = SDL_GetTicks();
+  elapsed += t - prevTick;
+  prevTick = t;
+  if ( elapsed < minTime ) {
+    uint32_t waitTime = minTime - elapsed;
+    usleep( waitTime * 1000 );
   }
 }
 

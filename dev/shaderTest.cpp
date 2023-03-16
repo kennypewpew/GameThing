@@ -56,17 +56,34 @@ class ShowWater {
   ShowWater() {}
 
   int MainLoop(int argc, char **argv) {
-    Shader shaderInputColor( "shader/waterDrop.vs" , "shader/diffuseLight.fs" );
+    //Shader shaderInputColor( "shader/waterDrop.vs" , "shader/diffuseLight.fs" );
+    //int xDim = 500;
+    //int yDim = 500;
 
-    int xDim = 500;
-    int yDim = 500;
+    //std::function<glm::vec3(int,int,int,int)> colorAlgo = [](int x, int y, int xDim, int yDim) {
+    //      float cx = float(x) / float(xDim);
+    //      float cy = float(y) / float(yDim);
+    //      return glm::vec3(0.,cx,cy);
+    //    };
+    //CreateConnectedGridColored(xDim, yDim, v_tiles, i_tiles, c_tiles, colorAlgo);
 
-    std::function<glm::vec3(int,int,int,int)> colorAlgo = [](int x, int y, int xDim, int yDim) {
-          float cx = float(x) / float(xDim);
-          float cy = float(y) / float(yDim);
-          return glm::vec3(0.,cx,cy);
-        };
-    CreateConnectedGridColored(xDim, yDim, v_tiles, i_tiles, c_tiles, colorAlgo);
+    //Shader shaderInputColor( "shader/cyclone.vs" , "shader/inputColor.fs" );
+    Shader shaderInputColor( "shader/whorl.vs" , "shader/inputColor.fs" );
+    float r0 = 0.1;
+    float r1 = 0.5;
+    int degInc = 10;
+    float height = 0.5;
+    int hLevels = 10;
+    CreateCyclonePointsColored( r0 , r1 , degInc , height , hLevels
+                              , v_tiles
+                              , i_tiles
+                              , c_tiles
+                              );
+    //CreateSpherePointsColored( r1 , degInc , height , hLevels
+    //                         , v_tiles
+    //                         , i_tiles
+    //                         , c_tiles
+    //                         );
 
     glm::mat4 view(1.);
     //view = glm::rotate(view,float(glm::radians(30.)), glm::vec3(0.,0.,1.) );
@@ -78,6 +95,7 @@ class ShowWater {
     boardLayer.SetUniform( "zoom" , glm::mat4(1.) );
     boardLayer.SetUniform( "shift" , glm::mat4(1.) );
     boardLayer.SetUniform( "view" , view );
+    boardLayer.SetUniform( "center" , glm::vec3(0.,0.,0.) );
     boardLayer.SetUniform( "time" , float(0.) );
     boardLayer.BindCopyVB(this->v_tiles,3,0);
     boardLayer.BindCopyVB(this->c_tiles,3,1);
@@ -102,11 +120,9 @@ class ShowWater {
       if ( !this->pause ) {
         uint32_t t = SDL_GetTicks();
         elapsedTicks += t - prev;
-        //elapsedSeconds += t - prev; 
         prev = t;
         if ( elapsedTicks > repeat ) elapsedTicks = elapsedTicks % repeat;
         time = float(elapsedTicks) / 1000.;
-        //time /= 2;
         time *= 2;
 
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
@@ -116,7 +132,8 @@ class ShowWater {
         boardLayer.SetUniform( "time" , time );
 
         //glDrawElements(GL_TRIANGLES,this->i_tiles.size()*sizeof(glm::vec2),GL_UNSIGNED_INT,NULL);
-        glDrawElements(GL_LINES,this->i_tiles.size()*sizeof(glm::vec2),GL_UNSIGNED_INT,NULL);
+        //glDrawElements(GL_LINES,this->i_tiles.size()*sizeof(glm::vec2),GL_UNSIGNED_INT,NULL);
+        glDrawElements(GL_POINTS,this->i_tiles.size()*sizeof(glm::vec2),GL_UNSIGNED_INT,NULL);
 
         SwapWindows();
       }

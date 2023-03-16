@@ -12,8 +12,8 @@
 
 Map::Map(const int &x, const int &y) {
   _tiles.resize(x*y);
-_xdim = x;
-_ydim = y;
+  _xdim = x;
+  _ydim = y;
 }
 uint8_t Map::h(const int&x, const int&y) const {
   return _tiles[x+y*_xdim].height;

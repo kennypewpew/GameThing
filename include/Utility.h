@@ -7,6 +7,7 @@
 
 #include <string>
 #include <functional>
+#include <unistd.h>
 
 class FpsPrinter {
  public:
@@ -16,6 +17,17 @@ class FpsPrinter {
   uint32_t oneSecond = 1000;
 
   FpsPrinter() {}
+
+  void Tick();
+};
+
+class FrameTimeLimiter {
+ public:
+  uint32_t prevTick = 0;
+  uint32_t elapsed = 0;
+  uint32_t minTime = 10;
+
+  FrameTimeLimiter(uint32_t us) : minTime(us) {}
 
   void Tick();
 };
@@ -73,4 +85,22 @@ void CreateConnectedGridColored( int xDim
                                , std::function<glm::vec3(int,int,int,int)> &f
                                );
 
+void CreateCyclonePointsColored( float r0
+                               , float r1
+                               , int degInc
+                               , float height
+                               , int hLevels
+                               , std::vector<glm::vec3> &vertices
+                               , std::vector<GLuint> &indices
+                               , std::vector<glm::vec3> &colors
+                               );
+
+void CreateSpherePointsColored( float r
+                              , int degInc
+                              , float height
+                              , int hLevels
+                              , std::vector<glm::vec3> &vertices
+                              , std::vector<GLuint> &indices
+                              , std::vector<glm::vec3> &colors
+                              );
 

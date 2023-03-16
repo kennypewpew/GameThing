@@ -26,6 +26,7 @@
 #include "Types.h"
 #include "BattleActor.h"
 #include "Physics.h"
+#include "Utility.h"
 
 #include "stb_image.h"
 
@@ -404,12 +405,14 @@ class BattleMap {
     actorLayer.UseThisLayer();
     glm::vec4 color(0.5f, 0.5f, 0.5f, 1.f);
     actorLayer.SetUniform( "incolor" , color );
-    glBufferData(GL_ARRAY_BUFFER, tet1.posVerts.size()*sizeof(glm::vec3),glm::value_ptr(tet1.posVerts[0]), GL_STATIC_DRAW);
+    //glBufferData(GL_ARRAY_BUFFER, tet1.posVerts.size()*sizeof(glm::vec3),glm::value_ptr(tet1.posVerts[0]), GL_STATIC_DRAW);
+    //actorLayer.BindCopyVB(tet1.posVerts , 3);
     actorLayer.RotateView( "view" , this->rots , shift );
     actorLayer.SetUniform( "zoom" , this->zoomLevel );
     actorLayer.SetUniform( "shift" , this->shiftMatrix );
     glDrawArrays(GL_TRIANGLES,0,9);
     actorLayer.SetUniform( "zoom" , glm::mat4(1.) );
+    actorLayer.SetUniform( "shift" , glm::mat4(1.) );
   }
 
   void FillColorIDs( const Map &myMap ) {
@@ -503,19 +506,26 @@ class BattleMap {
             break;
           case SDL_BUTTON_RIGHT:
             {
-              //GetTileCoords( coordinateBuffer, map , tet1.pos );
               GetTileCoords( coordinateBuffer, map , this->endTraj );
               break;
             }
           case SDL_BUTTON_MIDDLE:
-            std::cout << "mid click\n";
-            break;
+            {
+              //GetTileCoords( coordinateBuffer, map , tet1.pos );
+              std::cout << "mid click\n";
+              break;
+            }
           case SDL_BUTTON_X1:
-            std::cout << "x1 click\n";
-            break;
+            {
+              std::cout << "x1 click\n";
+              break;
+            }
           case SDL_BUTTON_X2:
-            std::cout << "x2 click\n";
-            break;
+            {
+              GetTileCoords( coordinateBuffer, map , tet1.pos );
+              //std::cout << "x2 click\n";
+              break;
+            }
           default:
             break;
         }
@@ -684,9 +694,8 @@ void SetReachable( const Map &mp , Map &buffer , const int &x , const int &y , c
       this->indicesTrajectory.clear();
 
       float dist = CoordsToDistance( startPos[0] , startPos[1] , endPos[0] , endPos[1] );
-      float angle = MaxAngleToReach( dist , startPos[2] - endPos[2] , vel );
+      float angle = MaxAngleToReach( dist , float(startPos[2] - endPos[2])/100. , vel );
       if ( glm::isnan(angle) ) return;
-//std::cout << angle << "\n";
 
       glm::vec3 posTraj = glm::vec3(CoordToValue(startPos[0]+0.5,myMap._xdim),CoordToValue(startPos[1]+0.5,myMap._ydim),HeightToValue(startPos[2]+5));
       verticesTrajectory.push_back(glm::vec3(posTraj));
@@ -709,6 +718,7 @@ void SetReachable( const Map &mp , Map &buffer , const int &x , const int &y , c
     Shader shaderInputColor( "shader/inputColor.vs" , "shader/inputColor.fs" );
     Shader shaderSolidColor( "shader/solidColor.vs" , "shader/solidColor.fs" );
     Shader shaderTexture( "shader/inputTexture.vs" , "shader/inputTexture.fs" );
+    Shader shaderAnimate( "shader/whorl.vs" , "shader/inputColor.fs" );
 
     //this->myMap = ReadMapFile("session/default/maps/example.map");
     this->myMap = GenerateMap(11,11,std::vector<VerticalityFeatures>(1,MOUNTAIN));
@@ -815,9 +825,43 @@ void SetReachable( const Map &mp , Map &buffer , const int &x , const int &y , c
     mapWallLayer.BindCopyVB(this->verticesTextureWalls,2,1);
     mapWallLayer.SetTexture("applyTexture","texCoord","assets/dungeonCrawlSoup/dungeon/wall/hive_0.png",GL_RGBA);
 
+
+    std::vector<glm::vec3> v_tiles, c_tiles;
+    std::vector<GLuint> i_tiles;
+    float r0 = 0.1;
+    float r1 = 0.1;
+    int degInc = 10;
+    float height = 0.5;
+    int hLevels = 10;
+    //CreateCyclonePointsColored( r0 , r1 , degInc , height , hLevels
+    CreateSpherePointsColored( r1 , degInc , height , hLevels
+                              , v_tiles
+                              , i_tiles
+                              , c_tiles
+                              );
+    GlLayer animationLayer( shaderAnimate );
+    animationLayer.AddInput( "position" , 3 );
+    animationLayer.AddInput( "incolor" , 3 );
+    animationLayer.SetUniform( "zoom" , glm::mat4(1.) );
+    animationLayer.SetUniform( "shift" , glm::mat4(1.) );
+    animationLayer.SetUniform( "view" , view );
+    float x0 = CoordToValue( 0.5 , myMap._xdim );
+    float y0 = CoordToValue( 0.5 , myMap._ydim );
+    float z0 = HeightToValue( 5 );
+    animationLayer.SetUniform( "center" , glm::vec3(x0,y0,z0) );
+    animationLayer.SetUniform( "time" , float(0.) );
+    animationLayer.BindCopyVB(v_tiles,3,0);
+    animationLayer.BindCopyVB(c_tiles,3,1);
+    animationLayer.BindCopyIB(i_tiles);
+
     this->bufferMap = this->myMap;
     std::map<Uint32,bool (*)(const SDL_Event&,BattleMap*)> inputHandler;
     inputHandler[SDL_QUIT] = QuitMap;
+
+    uint32_t prev = 0;
+    uint32_t repeat = 20000;;
+    float time = 0;
+    uint32_t elapsedTicks = 0;
 
     // Wait for the user to quit
     while (!this->quit) {
@@ -866,6 +910,25 @@ void SetReachable( const Map &mp , Map &buffer , const int &x , const int &y , c
       SetReachable( this->myMap , this->bufferMap , this->tet1.pos[0] , this->tet1.pos[1] , moveRange , jumpRange * HEIGHT_INCREMENT , this->tet1.pos[3] );
       FillReachableVertsInds( this->myMap , this->bufferMap , this->verticesMoveOverlay , this->indicesMoveOverlay );
       DrawMapOverlay(mapTileOverlay);
+
+      uint32_t t = SDL_GetTicks();
+      elapsedTicks += t - prev;
+      prev = t;
+      if ( elapsedTicks > repeat ) elapsedTicks = elapsedTicks % repeat;
+      time = float(elapsedTicks) / 1000.;
+      time *= 2;
+
+      animationLayer.UseThisLayer();
+      animationLayer.SetUniform( "time" , time );
+      //animationLayer.SetUniform( "view" , this->view );
+      //ashift.push_back(Translation(1,-tet1.location));
+      //ashift.push_back(Translation(1,-tet1.location));
+      animationLayer.RotateView( "view" , this->rots , ashift );
+      animationLayer.SetUniform( "zoom" , this->zoomLevel );
+      animationLayer.SetUniform( "shift" , this->shiftMatrix );
+      glDrawElements(GL_POINTS,i_tiles.size()*sizeof(glm::vec2),GL_UNSIGNED_INT,NULL);
+      animationLayer.SetUniform( "zoom" , glm::mat4(1.) );
+      animationLayer.SetUniform( "shift" , glm::mat4(1.) );
 
       SwapWindows();
 
