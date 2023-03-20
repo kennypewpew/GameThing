@@ -694,7 +694,7 @@ void SetReachable( const Map &mp , Map &buffer , const int &x , const int &y , c
       this->indicesTrajectory.clear();
 
       float dist = CoordsToDistance( startPos[0] , startPos[1] , endPos[0] , endPos[1] );
-      float angle = MaxAngleToReach( dist , float(startPos[2] - endPos[2])/100. , vel );
+      float angle = MaxAngleToReach( dist , float(startPos[2] - endPos[2]) , vel );
       if ( glm::isnan(angle) ) return;
 
       glm::vec3 posTraj = glm::vec3(CoordToValue(startPos[0]+0.5,myMap._xdim),CoordToValue(startPos[1]+0.5,myMap._ydim),HeightToValue(startPos[2]+5));
