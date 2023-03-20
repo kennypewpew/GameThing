@@ -5,10 +5,15 @@
 #include <glm/vec4.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
+#include "SDL.h"
+
 #include "Window.h"
 #include "GlLayer.h"
 #include "Types.h"
 #include "Utility.h"
+#include "Text.h"
+#include "GUILayer.h"
+#include "Globals.h"
 
 const unsigned int DISP_WIDTH = 720;
 const unsigned int DISP_HEIGHT = 720;
@@ -71,7 +76,7 @@ class Ball {
     if ( distX > radius ) return false;
 
     float distY = abs(pos[1] - p.pos[1]);
-    if ( distY < p.length ) return true;
+    if ( distY < (p.length/2.)+radius ) return true;
 
     return false;
   }
@@ -133,6 +138,10 @@ class PongScreen {
   Paddle paddle[2];
   Ball ball;
 
+  int score[2] = {0,0};
+  int rally = 0;
+  bool paused = false;
+
   glm::mat4 view;
   glm::mat4 zoom;
   std::vector<glm::vec3> v_paddleLf, v_paddleRt, v_ball, v_border;
@@ -143,6 +152,8 @@ class PongScreen {
   bool moveUp = false;
   bool moveDown = false;
 
+  ScreenRegion w = ScreenRegion(0,0,DISP_WIDTH,DISP_HEIGHT);
+
   PongScreen() {}
 
   void PaddleAI(float t) {
@@ -151,6 +162,24 @@ class PongScreen {
 
     if ( paddle[0].pos[1] < ball.pos[1] ) paddle[0].MoveU(0.6 * t);
     if ( paddle[0].pos[1] > ball.pos[1] ) paddle[0].MoveD(0.6 * t);
+  }
+
+  void CheckIfScored() {
+    bool scored = false;
+
+    if ( ball.pos[0] < -1. ) {
+      ++score[1];
+      scored = true;
+    }
+    if ( ball.pos[0] > 1. ) {
+      ++score[0];
+      scored = true;
+    }
+
+    if ( scored ) {
+      paused = true;
+      ResetAll();
+    }
   }
 
   void UpdatePositions(float t) {
@@ -164,6 +193,8 @@ class PongScreen {
     lShift = glm::translate(glm::mat4(1.),glm::vec3(paddle[0].pos[0], paddle[0].pos[1], 0) );
     rShift = glm::translate(glm::mat4(1.),glm::vec3(paddle[1].pos[0], paddle[1].pos[1], 0) );
     bShift = glm::translate(glm::mat4(1.),glm::vec3(     ball.pos[0],      ball.pos[1], 0) );
+
+    CheckIfScored();
   }
 
   void ResetAll() {
@@ -173,10 +204,12 @@ class PongScreen {
   }
 
   void HandleInputEvent( const SDL_Event &e ) {
-      //if ( handlers.count(e.type) ) (handlers[e.type])(e,this);
       if ( e.type == SDL_KEYDOWN ) {
         switch (e.key.keysym.sym)
         {
+          case SDLK_ESCAPE:
+            this->paused = !(this->paused);
+            break;
           case SDLK_q:
             this->quit = true;
             break;
@@ -210,16 +243,25 @@ class PongScreen {
         switch(e.button.button)
         {
           case SDL_BUTTON_LEFT:
-            //int xPos, yPos;
-            //SDL_GetMouseState(&xPos,&yPos);
-            //Pos2D p = PixelsToPosition(xPos,yPos);
-            //if ( selected ) {
-            //  if ( MovePiece(selection.x,selection.y,p.x,p.y) ) ChangeTurn();
-            //  Deselect();
-            //}
-            //else {
-            //  SelectPiece(p.x,p.y);
-            //}
+            if ( uint8_t(e.type) == uint8_t(SDL_MOUSEBUTTONDOWN) ) {
+              int xPos, yPos;
+              SDL_GetMouseState(&xPos,&yPos);
+              switch(e.button.button)
+              {
+                case SDL_BUTTON_LEFT:
+                  {
+                    w.HandleClick(xPos,yPos,LCLICK);
+                    break;
+                  }
+                case SDL_BUTTON_RIGHT:
+                  {
+                    w.HandleClick(xPos,yPos,RCLICK);
+                    break;
+                  }
+                default:
+                  break;
+              }
+            }
             break;
         }
       }
@@ -252,6 +294,7 @@ class PongScreen {
   int MainLoop(int argc, char **argv) {
     Shader shaderInputColor( "shader/inputColor.vs" , "shader/inputColor.fs" );
     Shader shaderSolidColor( "shader/solidColor.vs" , "shader/solidColor.fs" );
+
 
     paddle[0] = Paddle(0.2,-0.9);
     paddle[1] = Paddle(0.2,+0.9);
@@ -290,7 +333,6 @@ class PongScreen {
     l_ball.BindCopyIB(this->i_ball);
 
     MakeBorders(v_border, i_border);
-printf("%d,%d\n",v_border.size(), i_border.size());
     GlLayer l_border( shaderSolidColor );
     l_border.AddInput( "position" , 3 );
     l_border.SetUniform( "incolor" , glm::vec4(1.,1.,1.,1.) );
@@ -299,6 +341,22 @@ printf("%d,%d\n",v_border.size(), i_border.size());
     l_border.SetUniform( "view" , glm::mat4(1.) );
     l_border.BindCopyVB(this->v_border,3,0);
     l_border.BindCopyIB(this->i_border);
+
+
+    Shader bgShader("shader/inputTexture.vs", "shader/inputTexture.fs");
+    Shader textShader("shader/inputTexture.vs", "shader/coloredTexture.fs");
+    Shader textBgShader( "shader/solidColor.vs" , "shader/solidColor.fs" );
+
+    TextBackground textBgLayer(textBgShader);
+    CharMap fontInfo;
+    fontInfo.ReadFontFile("assets/fonts","gidole_regular_20.fnt");
+    glm::vec3 textColor(1.0,0.0,0.0);
+    TextWriter txtW(textShader,fontInfo,textColor,SCREEN.W(),SCREEN.H());
+
+    Pos2Df menuPos = { .x = -0.1 , .y = 0.10 };
+    PopupMenu menu(menuPos, &txtW, &textBgLayer, &w, 2.f);
+    menu.AddItem( "dummy" );
+    menu.Display();
 
     FpsPrinter fps;
 
@@ -311,7 +369,18 @@ printf("%d,%d\n",v_border.size(), i_border.size());
         HandleInputEvent( event );
       }
 
-      UpdatePositions(float(frameTime)/1000.);
+      if ( !paused ) {
+        UpdatePositions(float(frameTime)/1000.);
+        if ( menu.displayed ) {
+          menu.Remove();
+        }
+      }
+      else {
+        if ( !menu.displayed ) {
+          menu.items[0].text = std::to_string(score[0]) + " : " + std::to_string(score[1]);
+          menu.Display();
+        }
+      }
 
       glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
       glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -331,6 +400,9 @@ printf("%d,%d\n",v_border.size(), i_border.size());
       l_ball.UseThisLayer();
       l_ball.SetUniform( "shift" , bShift );
       glDrawElements(GL_TRIANGLES,this->i_ball.size()*sizeof(glm::vec2),GL_UNSIGNED_INT,NULL);
+
+      textBgLayer.Draw();
+      txtW.RenderText();
 
       limit.Tick();
       fps.Tick();
